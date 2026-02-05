@@ -11,11 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  X, 
-  ZoomIn, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  X,
+  ZoomIn,
   ZoomOut,
   BookOpen,
   Loader2,
@@ -140,7 +140,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const onDocumentLoadSuccess = useCallback(({ numPages: total }: { numPages: number }) => {
     setNumPages(total);
     setLoading(false);
-    
+
     // Update total pages if changed
     if (total !== book.total_pages) {
       onProgressUpdate(book.id, book.current_page || 1, total);
@@ -320,7 +320,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               <X className="w-4 h-4" />
             </Button>
           </div>
-          
+
           {/* Progress bar */}
           <div className="flex items-center gap-3 mt-2">
             <Progress value={progressPercent} className="flex-1 h-2" />
@@ -434,59 +434,59 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                 Salir de pantalla completa
               </Button>
             )}
-        <div
-          ref={containerRef}
-          className={`flex-1 overflow-auto flex items-start justify-center p-4 min-w-0 touch-manipulation ${viewerDarkMode ? 'bg-black' : ''}`}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onWheel={(e) => {
-            if (e.altKey) {
-              e.preventDefault();
-              const delta = -Math.sign(e.deltaY) * 0.05;
-              setScaleClamped(s => s + delta);
-            }
-          }}
-        >
-          {loading && (
-            <div className={`flex flex-col items-center justify-center h-full min-h-[200px] gap-3 w-full ${viewerDarkMode ? 'bg-black text-neutral-200' : ''}`}>
-              <Loader2 className={`w-8 h-8 animate-spin ${viewerDarkMode ? 'text-neutral-300' : 'text-primary'}`} />
-              <p className={viewerDarkMode ? 'text-neutral-400' : 'text-muted-foreground'}>Cargando PDF...</p>
-            </div>
-          )}
-
-          {error && (
-            <div className={`flex flex-col items-center justify-center h-full gap-3 ${viewerDarkMode ? 'bg-black' : ''}`}>
-              <p className="text-destructive">{error}</p>
-              <Button variant="outline" onClick={handleClose}>Cerrar</Button>
-            </div>
-          )}
-
-          {pdfUrl && !error && (
             <div
-              className={`min-h-full w-full flex items-start justify-center ${viewerDarkMode ? 'bg-[#000000]' : 'bg-white'}`}
+              ref={containerRef}
+              className={`flex-1 overflow-auto flex items-start justify-center p-4 min-w-0 touch-manipulation ${viewerDarkMode ? 'bg-black' : ''}`}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onWheel={(e) => {
+                if (e.altKey) {
+                  e.preventDefault();
+                  const delta = -Math.sign(e.deltaY) * 0.05;
+                  setScaleClamped(s => s + delta);
+                }
+              }}
             >
-              <Document
-                file={pdfUrl}
-                onLoadSuccess={onDocumentLoadSuccess}
-                onLoadError={onDocumentLoadError}
-                onItemClick={onInternalLinkClick}
-                loading={null}
-                className={`shadow-lg ${viewerDarkMode ? 'pdf-viewer-dark' : ''}`}
-              >
-                <Page
-                  pageNumber={pageNumber}
-                  width={pageWidth}
-                  scale={scale}
-                  loading={null}
-                  className={viewerDarkMode ? 'pdf-viewer-dark-page [&_canvas]:invert [&_.react-pdf__Page__textContent]:invert [&_.react-pdf__Page__annotations]:invert' : 'bg-white'}
-                  renderTextLayer={true}
-                  renderAnnotationLayer={true}
-                />
-              </Document>
+              {loading && (
+                <div className={`flex flex-col items-center justify-center h-full min-h-[200px] gap-3 w-full ${viewerDarkMode ? 'bg-black text-neutral-200' : ''}`}>
+                  <Loader2 className={`w-8 h-8 animate-spin ${viewerDarkMode ? 'text-neutral-300' : 'text-primary'}`} />
+                  <p className={viewerDarkMode ? 'text-neutral-400' : 'text-muted-foreground'}>Cargando PDF...</p>
+                </div>
+              )}
+
+              {error && (
+                <div className={`flex flex-col items-center justify-center h-full gap-3 ${viewerDarkMode ? 'bg-black' : ''}`}>
+                  <p className="text-destructive">{error}</p>
+                  <Button variant="outline" onClick={handleClose}>Cerrar</Button>
+                </div>
+              )}
+
+              {pdfUrl && !error && (
+                <div
+                  className={`min-h-full w-full flex items-start justify-center ${viewerDarkMode ? 'bg-[#000000]' : 'bg-white'}`}
+                >
+                  <Document
+                    file={pdfUrl}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    onLoadError={onDocumentLoadError}
+                    onItemClick={onInternalLinkClick}
+                    loading={null}
+                    className={`shadow-lg ${viewerDarkMode ? 'pdf-viewer-dark' : ''}`}
+                  >
+                    <Page
+                      pageNumber={pageNumber}
+                      width={pageWidth}
+                      scale={scale}
+                      loading={null}
+                      className={viewerDarkMode ? 'pdf-viewer-dark-page [&_canvas]:invert [&_.react-pdf__Page__textContent]:invert [&_.react-pdf__Page__annotations]:invert' : 'bg-white'}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={true}
+                    />
+                  </Document>
+                </div>
+              )}
             </div>
-          )}
-        </div>
           </div>
         </div>
 
