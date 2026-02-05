@@ -1,0 +1,162 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Biblioteca Personal - Literary Design System */
+
+@layer base {
+  :root {
+    /* Warm cream/paper background */
+    --background: 40 30% 96%;
+    --foreground: 25 30% 15%;
+
+    /* Card with subtle paper texture feel */
+    --card: 40 40% 98%;
+    --card-foreground: 25 30% 15%;
+
+    --popover: 40 40% 98%;
+    --popover-foreground: 25 30% 15%;
+
+    /* Deep burgundy/wine primary */
+    --primary: 350 45% 30%;
+    --primary-foreground: 40 30% 96%;
+
+    /* Muted sage secondary */
+    --secondary: 150 15% 85%;
+    --secondary-foreground: 25 30% 20%;
+
+    /* Subtle warm gray muted */
+    --muted: 35 20% 90%;
+    --muted-foreground: 25 15% 45%;
+
+    /* Gold accent */
+    --accent: 42 70% 55%;
+    --accent-foreground: 25 30% 15%;
+
+    /* Soft coral destructive */
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 40 30% 96%;
+
+    --border: 35 25% 85%;
+    --input: 35 25% 88%;
+    --ring: 350 45% 30%;
+
+    --radius: 0.75rem;
+
+    /* Custom design tokens */
+    --gradient-hero: linear-gradient(135deg, hsl(350, 45%, 30%) 0%, hsl(25, 40%, 35%) 100%);
+    --gradient-gold: linear-gradient(135deg, hsl(42, 70%, 55%) 0%, hsl(35, 80%, 60%) 100%);
+    --shadow-book: 0 10px 40px -10px hsl(25 30% 15% / 0.15), 0 4px 6px -4px hsl(25 30% 15% / 0.1);
+    --shadow-card: 0 4px 20px -4px hsl(25 30% 15% / 0.08);
+    --shadow-hover: 0 20px 50px -15px hsl(25 30% 15% / 0.2);
+
+    /* Sidebar */
+    --sidebar-background: 35 25% 94%;
+    --sidebar-foreground: 25 30% 25%;
+    --sidebar-primary: 350 45% 30%;
+    --sidebar-primary-foreground: 40 30% 96%;
+    --sidebar-accent: 35 20% 88%;
+    --sidebar-accent-foreground: 25 30% 20%;
+    --sidebar-border: 35 20% 85%;
+    --sidebar-ring: 350 45% 30%;
+
+    /* Success/Read state */
+    --success: 150 40% 40%;
+    --success-foreground: 40 30% 96%;
+  }
+
+  .dark {
+    --background: 25 20% 10%;
+    --foreground: 40 20% 92%;
+
+    --card: 25 18% 14%;
+    --card-foreground: 40 20% 92%;
+
+    --popover: 25 18% 14%;
+    --popover-foreground: 40 20% 92%;
+
+    --primary: 42 70% 55%;
+    --primary-foreground: 25 20% 10%;
+
+    --secondary: 25 15% 22%;
+    --secondary-foreground: 40 20% 88%;
+
+    --muted: 25 15% 18%;
+    --muted-foreground: 35 15% 55%;
+
+    --accent: 350 40% 45%;
+    --accent-foreground: 40 20% 92%;
+
+    --destructive: 0 55% 45%;
+    --destructive-foreground: 40 20% 92%;
+
+    --border: 25 15% 22%;
+    --input: 25 15% 22%;
+    --ring: 42 70% 55%;
+
+    --sidebar-background: 25 18% 12%;
+    --sidebar-foreground: 40 15% 85%;
+    --sidebar-primary: 42 70% 55%;
+    --sidebar-primary-foreground: 25 20% 10%;
+    --sidebar-accent: 25 15% 18%;
+    --sidebar-accent-foreground: 40 15% 85%;
+    --sidebar-border: 25 15% 20%;
+    --sidebar-ring: 42 70% 55%;
+
+    --success: 150 35% 45%;
+    --success-foreground: 25 20% 10%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif;
+  }
+}
+
+@layer utilities {
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+  
+  .gradient-gold {
+    background: var(--gradient-gold);
+  }
+  
+  .shadow-book {
+    box-shadow: var(--shadow-book);
+  }
+  
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  
+  .shadow-hover {
+    box-shadow: var(--shadow-hover);
+  }
+
+  .text-gradient {
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+/* PDF viewer dark mode: contenedor de la página (barra abajo con zoom bajo). No tocar canvas ni capas para que se vea el contenido invertido. */
+.pdf-viewer-dark,
+.pdf-viewer-dark .react-pdf__Document,
+.pdf-viewer-dark .react-pdf__Page,
+.pdf-viewer-dark-page {
+  background-color: rgb(0, 0, 0) !important;
+}

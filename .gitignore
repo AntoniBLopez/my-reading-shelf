@@ -134,6 +134,9 @@ dist
 !.yarn/sdks
 !.yarn/versions
 
+# This project uses pnpm (pnpm-lock.yaml). Ignore npm lockfile.
+package-lock.json
+
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
