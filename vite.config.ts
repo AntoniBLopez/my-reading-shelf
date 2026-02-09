@@ -3,8 +3,9 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
 // https://vitejs.dev/config/
+// VITE_BASE_PATH: set to "/" for Vercel (root); unset for GitHub Pages (/my-reading-shelf/)
 export default defineConfig({
-  base: "/my-reading-shelf/",
+  base: process.env.VITE_BASE_PATH || "/my-reading-shelf/",
   server: {
     host: "::",
     port: 8080,
