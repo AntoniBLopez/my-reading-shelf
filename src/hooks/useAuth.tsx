@@ -19,6 +19,13 @@ const LOCAL_USER: User = {
   updated_at: new Date().toISOString(),
 };
 
+/** URL a la que Supabase redirige en los enlaces de email (confirmación, recuperar contraseña). Usar VITE_APP_URL en producción. */
+export function getAuthRedirectUrl(): string {
+  const url = import.meta.env.VITE_APP_URL;
+  if (typeof url === 'string' && url.length > 0) return url.replace(/\/$/, '');
+  return window.location.origin;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -27,6 +34,7 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -66,12 +74,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isSupabaseConfigured() || !supabase) {
       return { error: new Error('Configure Supabase in .env for cloud sync') };
     }
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: getAuthRedirectUrl() },
     });
-    return { error: error as Error | null };
+    if (error) return { error: error as Error };
+    // Supabase no devuelve error si el email ya existe (evita enumeración). Detectamos: sin sesión y sin identities = ya registrado.
+    if (!data.session && (!data.user?.identities || data.user.identities.length === 0)) {
+      return { error: new Error('Este correo ya tiene una cuenta. Inicia sesión o usa otra dirección.') };
+    }
+    return { error: null };
   };
 
   const signIn = async (email: string, password: string) => {
@@ -86,8 +99,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (supabase) await supabase.auth.signOut();
   };
 
+  const resetPassword = async (email: string) => {
+    if (!isSupabaseConfigured() || !supabase) {
+      return { error: new Error('Configure Supabase in .env for cloud sync') };
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${getAuthRedirectUrl()}/`,
+    });
+    return { error: error as Error | null };
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, isLocalOnly, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, isLocalOnly, signUp, signIn, signOut, resetPassword }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,13 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { Folder, Book } from '@/types/library';
+import { Folder, Book, BookState, getBookState, FolderCategory } from '@/types/library';
 import { toast } from 'sonner';
 import {
   getLocalFolders,
   setLocalFolders,
   getLocalBooks,
   setLocalBooks,
+  getLocalCategories,
+  setLocalCategories,
+  getLocalFolderLayout,
+  setLocalFolderLayout,
+  type FolderLayout,
   savePdfBlob,
   getPdfBlobUrl,
   deletePdfBlob,
@@ -18,9 +23,19 @@ export function useLibrary() {
   const { user } = useAuth();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
+  const [categories, setCategories] = useState<FolderCategory[]>([]);
+  const [layout, setLayout] = useState<FolderLayout>(() => getLocalFolderLayout());
   const [loading, setLoading] = useState(true);
 
   const isLocal = !user || !isSupabaseConfigured() || user.id === LOCAL_USER_ID;
+  const pendingDeleteRef = useRef<{ id: string; book: Book; timeout: ReturnType<typeof setTimeout>; isLocal: boolean } | null>(null);
+  const pendingFolderDeleteRef = useRef<{
+    id: string;
+    folder: Folder;
+    booksInFolder: Book[];
+    timeout: ReturnType<typeof setTimeout>;
+    isLocal: boolean;
+  } | null>(null);
 
   const fetchFolders = useCallback(async () => {
     if (!user) return;
@@ -67,6 +82,8 @@ export function useLibrary() {
 
   useEffect(() => {
     if (user) {
+      setCategories(getLocalCategories());
+      setLayout(getLocalFolderLayout());
       setLoading(true);
       if (isLocal) {
         setFolders(getLocalFolders());
@@ -93,6 +110,14 @@ export function useLibrary() {
       const next = [folder, ...getLocalFolders()];
       setLocalFolders(next);
       setFolders(next);
+      const newPositions = { ...layout.folderPositions };
+      newPositions[folder.id] = { categoryId: null, position: 0 };
+      Object.keys(newPositions).forEach(id => {
+        if (id !== folder.id && newPositions[id].categoryId === null) newPositions[id] = { ...newPositions[id], position: newPositions[id].position + 1 };
+      });
+      const newLayout = { ...layout, folderPositions: newPositions };
+      setLayout(newLayout);
+      setLocalFolderLayout(newLayout);
       toast.success('Carpeta creada');
       return folder;
     }
@@ -108,6 +133,14 @@ export function useLibrary() {
       return null;
     }
     setFolders(prev => [data, ...prev]);
+    const newPositions = { ...layout.folderPositions };
+    newPositions[data.id] = { categoryId: null, position: 0 };
+    Object.keys(newPositions).forEach(id => {
+      if (id !== data.id && newPositions[id].categoryId === null) newPositions[id] = { ...newPositions[id], position: newPositions[id].position + 1 };
+    });
+    const newLayout = { ...layout, folderPositions: newPositions };
+    setLayout(newLayout);
+    setLocalFolderLayout(newLayout);
     toast.success('Carpeta creada');
     return data;
   };
@@ -133,26 +166,69 @@ export function useLibrary() {
   };
 
   const deleteFolder = async (id: string) => {
-    if (isLocal) {
-      const nextFolders = getLocalFolders().filter(f => f.id !== id);
-      const nextBooks = getLocalBooks().filter(b => b.folder_id !== id);
+    const folder = folders.find(f => f.id === id);
+    if (!folder) return false;
+    const booksInFolder = books.filter(b => b.folder_id === id);
+
+    const runPendingFolderDelete = () => {
+      if (!pendingFolderDeleteRef.current) return;
+      const { id: pendingId, folder: pendingFolder, booksInFolder: pendingBooks, isLocal: pendingLocal } = pendingFolderDeleteRef.current;
+      pendingFolderDeleteRef.current = null;
+      if (pendingLocal) {
+        pendingBooks.forEach(b => deletePdfBlob(b.id));
+      } else if (supabase) {
+        pendingBooks.forEach(b => {
+          supabase.storage.from('pdfs').remove([b.file_path]);
+          supabase.from('books').delete().eq('id', b.id);
+        });
+        supabase.from('folders').delete().eq('id', pendingId);
+      }
+    };
+
+    if (pendingFolderDeleteRef.current) {
+      runPendingFolderDelete();
+    }
+
+    const isLocalDelete = isLocal;
+    const nextFolders = folders.filter(f => f.id !== id);
+    const nextBooks = books.filter(b => b.folder_id !== id);
+    setFolders(nextFolders);
+    setBooks(nextBooks);
+    if (isLocalDelete) {
       setLocalFolders(nextFolders);
       setLocalBooks(nextBooks);
-      setFolders(nextFolders);
-      setBooks(nextBooks);
-      toast.success('Carpeta eliminada');
-      return true;
     }
-    if (!supabase) return false;
-    const { error } = await supabase.from('folders').delete().eq('id', id);
-    if (error) {
-      toast.error('Error al eliminar carpeta');
-      console.error(error);
-      return false;
-    }
-    setFolders(prev => prev.filter(f => f.id !== id));
-    setBooks(prev => prev.filter(b => b.folder_id !== id));
-    toast.success('Carpeta eliminada');
+
+    const timeout = setTimeout(runPendingFolderDelete, 5000);
+    pendingFolderDeleteRef.current = { id, folder, booksInFolder, timeout, isLocal: isLocalDelete };
+
+    toast.success('Carpeta eliminada', {
+      duration: 5000,
+      action: {
+        label: 'Deshacer',
+        onClick: () => {
+          if (!pendingFolderDeleteRef.current || pendingFolderDeleteRef.current.id !== id) return;
+          clearTimeout(pendingFolderDeleteRef.current.timeout);
+          pendingFolderDeleteRef.current = null;
+          setFolders(prev => {
+            const exists = prev.some(f => f.id === id);
+            return exists ? prev : [folder, ...prev];
+          });
+          setBooks(prev => {
+            const restored = booksInFolder.filter(b => !prev.some(p => p.id === b.id));
+            return restored.length ? [...restored, ...prev] : prev;
+          });
+          if (isLocalDelete) {
+            const localFolders = getLocalFolders();
+            if (!localFolders.some(f => f.id === id)) setLocalFolders([folder, ...localFolders]);
+            const localBooks = getLocalBooks();
+            const toRestore = booksInFolder.filter(b => !localBooks.some(lb => lb.id === b.id));
+            if (toRestore.length) setLocalBooks([...toRestore, ...localBooks]);
+          }
+        },
+      },
+    });
+
     return true;
   };
 
@@ -218,16 +294,35 @@ export function useLibrary() {
     return bookWithProgress;
   };
 
-  const toggleBookRead = async (id: string, isRead: boolean) => {
-    const updates = {
-      is_read: isRead,
-      read_at: isRead ? new Date().toISOString() : null,
-    };
+  const setBookState = async (id: string, state: BookState) => {
+    const book = books.find(b => b.id === id);
+    if (!book) return false;
+    const totalPages = book.total_pages || 1;
+    const updates: Partial<Book> =
+      state === 'Leído'
+        ? {
+            is_read: true,
+            read_at: new Date().toISOString(),
+            current_page: totalPages,
+            total_pages: totalPages,
+          }
+        : state === 'Pendiente'
+          ? {
+              is_read: false,
+              read_at: null,
+              current_page: 1,
+            }
+          : {
+              is_read: false,
+              read_at: null,
+              current_page: book.current_page <= 1 ? 2 : book.current_page,
+              total_pages: book.current_page <= 1 ? (book.total_pages || 2) : book.total_pages,
+            };
     if (isLocal) {
       const next = getLocalBooks().map(b => (b.id === id ? { ...b, ...updates } : b));
       setLocalBooks(next);
       setBooks(next);
-      toast.success(isRead ? '¡Libro marcado como leído!' : 'Libro marcado como pendiente');
+      toast.success(state === 'Leído' ? '¡Libro marcado como leído!' : state === 'Pendiente' ? 'Libro marcado como pendiente' : 'Libro en progreso');
       return true;
     }
     if (!supabase) return false;
@@ -238,8 +333,12 @@ export function useLibrary() {
       return false;
     }
     setBooks(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
-    toast.success(isRead ? '¡Libro marcado como leído!' : 'Libro marcado como pendiente');
+    toast.success(state === 'Leído' ? '¡Libro marcado como leído!' : state === 'Pendiente' ? 'Libro marcado como pendiente' : 'Libro en progreso');
     return true;
+  };
+
+  const toggleBookRead = async (id: string, isRead: boolean) => {
+    return setBookState(id, isRead ? 'Leído' : 'Pendiente');
   };
 
   const updateBook = async (id: string, updates: Partial<Pick<Book, 'title'>>) => {
@@ -306,28 +405,203 @@ export function useLibrary() {
   const deleteBook = async (id: string) => {
     const book = books.find(b => b.id === id);
     if (!book) return false;
-    if (isLocal) {
-      await deletePdfBlob(id);
-      const next = getLocalBooks().filter(b => b.id !== id);
-      setLocalBooks(next);
-      setBooks(next);
-      toast.success('Libro eliminado');
-      return true;
+
+    const runPendingDelete = async () => {
+      const pending = pendingDeleteRef.current;
+      if (!pending) return;
+      const { id: pendingId, book: pendingBook, isLocal: pendingLocal } = pending;
+      pendingDeleteRef.current = null;
+
+      if (pendingLocal) {
+        await deletePdfBlob(pendingId);
+        return;
+      }
+      if (!supabase) return;
+      try {
+        const { error: storageError } = await supabase.storage.from('pdfs').remove([pendingBook.file_path]);
+        if (storageError) console.warn('Error eliminando PDF del storage:', storageError);
+        const { error: deleteError } = await supabase.from('books').delete().eq('id', pendingId);
+        if (deleteError) {
+          throw deleteError;
+        }
+      } catch (err) {
+        console.error('Error eliminando libro:', err);
+        toast.error('No se pudo eliminar el libro');
+        setBooks(prev => {
+          const exists = prev.some(b => b.id === pendingId);
+          return exists ? prev : [pendingBook, ...prev];
+        });
+      }
+    };
+
+    if (pendingDeleteRef.current) {
+      runPendingDelete();
     }
-    if (!supabase) return false;
-    await supabase.storage.from('pdfs').remove([book.file_path]);
-    const { error } = await supabase.from('books').delete().eq('id', id);
-    if (error) {
-      toast.error('Error al eliminar libro');
-      console.error(error);
-      return false;
+
+    const isLocalDelete = isLocal;
+    const nextBooks = books.filter(b => b.id !== id);
+    setBooks(nextBooks);
+    if (isLocalDelete) {
+      setLocalBooks(nextBooks);
     }
-    setBooks(prev => prev.filter(b => b.id !== id));
-    toast.success('Libro eliminado');
+
+    const timeout = setTimeout(() => {
+      runPendingDelete();
+    }, 5000);
+    pendingDeleteRef.current = { id, book, timeout, isLocal: isLocalDelete };
+
+    toast.success('Libro eliminado', {
+      duration: 5000,
+      action: {
+        label: 'Deshacer',
+        onClick: () => {
+          if (!pendingDeleteRef.current || pendingDeleteRef.current.id !== id) return;
+          clearTimeout(pendingDeleteRef.current.timeout);
+          pendingDeleteRef.current = null;
+          setBooks(prev => {
+            const exists = prev.some(b => b.id === id);
+            return exists ? prev : [book, ...prev];
+          });
+          if (isLocalDelete) {
+            const local = getLocalBooks();
+            if (!local.some(b => b.id === id)) setLocalBooks([book, ...local]);
+          }
+        },
+      },
+    });
+
     return true;
   };
 
-  const getBooksByFolder = (folderId: string) => books.filter(b => b.folder_id === folderId);
+  const getBooksByFolder = (folderId: string) => {
+    const stateOrder: Record<BookState, number> = { 'En progreso': 0, Pendiente: 1, Leído: 2 };
+    const inFolder = books.filter(b => b.folder_id === folderId);
+    const orderIds = layout.bookOrder?.[folderId];
+    if (orderIds?.length) {
+      const byId = new Map(inFolder.map(b => [b.id, b]));
+      const ordered: Book[] = [];
+      for (const id of orderIds) {
+        const b = byId.get(id);
+        if (b) ordered.push(b);
+      }
+      inFolder.forEach(b => { if (!orderIds.includes(b.id)) ordered.push(b); });
+      return ordered;
+    }
+    return [...inFolder].sort((a, b) => stateOrder[getBookState(a)] - stateOrder[getBookState(b)]);
+  };
+
+  const reorderBooks = (folderId: string, fromIndex: number, toIndex: number) => {
+    const ordered = getBooksByFolder(folderId).map(b => b.id);
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.length || toIndex >= ordered.length) return;
+    const next = [...ordered];
+    const [removed] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, removed);
+    const newBookOrder = { ...layout.bookOrder, [folderId]: next };
+    persistLayout({ ...layout, bookOrder: newBookOrder });
+  };
+
+  /** Carpetas y categorías ordenadas para la UI: sin categoría primero, luego cada categoría. */
+  const getOrderedSections = (): { uncategorized: Folder[]; categories: { category: FolderCategory; folders: Folder[] }[] } => {
+    const folderPositions = layout.folderPositions;
+    const categoryOrder = layout.categoryOrder;
+    const withLayout = folders.map(f => ({
+      ...f,
+      category_id: folderPositions[f.id]?.categoryId ?? f.category_id ?? null,
+      position: folderPositions[f.id]?.position ?? f.position ?? 999,
+    }));
+    const uncategorized = withLayout.filter(f => !f.category_id).sort((a, b) => a.position - b.position);
+    const sortedCategories = [...categories].sort((a, b) => {
+      const ai = categoryOrder.indexOf(a.id);
+      const bi = categoryOrder.indexOf(b.id);
+      if (ai === -1 && bi === -1) return a.position - b.position;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+    const categoriesWithFolders = sortedCategories.map(cat => ({
+      category: cat,
+      folders: withLayout.filter(f => f.category_id === cat.id).sort((a, b) => a.position - b.position),
+    }));
+    return { uncategorized, categories: categoriesWithFolders };
+  };
+
+  const persistLayout = (newLayout: FolderLayout) => {
+    setLayout(newLayout);
+    setLocalFolderLayout(newLayout);
+  };
+
+  const createCategory = async (name: string) => {
+    if (!user) return null;
+    const now = new Date().toISOString();
+    const category: FolderCategory = {
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      name: name.trim(),
+      position: categories.length,
+      created_at: now,
+      updated_at: now,
+    };
+    const next = [...categories, category];
+    setCategories(next);
+    setLocalCategories(next);
+    persistLayout({ ...layout, categoryOrder: [...layout.categoryOrder, category.id] });
+    toast.success('Categoría creada');
+    return category;
+  };
+
+  const updateCategory = async (id: string, updates: Partial<Pick<FolderCategory, 'name'>>) => {
+    const next = categories.map(c => (c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c));
+    setCategories(next);
+    setLocalCategories(next);
+    toast.success('Categoría actualizada');
+    return true;
+  };
+
+  const deleteCategory = async (id: string) => {
+    const nextCategories = categories.filter(c => c.id !== id);
+    setCategories(nextCategories);
+    setLocalCategories(nextCategories);
+    const newPositions = { ...layout.folderPositions };
+    Object.keys(newPositions).forEach(fid => {
+      if (newPositions[fid].categoryId === id) newPositions[fid] = { categoryId: null, position: newPositions[fid].position };
+    });
+    persistLayout({
+      folderPositions: newPositions,
+      categoryOrder: layout.categoryOrder.filter(cid => cid !== id),
+    });
+    toast.success('Categoría eliminada');
+    return true;
+  };
+
+  const reorderFolders = (folderId: string, targetCategoryId: string | null, targetIndex: number) => {
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder) return;
+    const { uncategorized, categories: catsWithFolders } = getOrderedSections();
+    const targetFolderIds =
+      targetCategoryId === null
+        ? uncategorized.map(f => f.id).filter(id => id !== folderId)
+        : (catsWithFolders.find(c => c.category.id === targetCategoryId)?.folders ?? []).map(f => f.id).filter(id => id !== folderId);
+    const inserted = [...targetFolderIds.slice(0, targetIndex), folderId, ...targetFolderIds.slice(targetIndex)];
+    const newPositions = { ...layout.folderPositions };
+    inserted.forEach((id, pos) => {
+      newPositions[id] = { categoryId: targetCategoryId, position: pos };
+    });
+    const sourceUncategorized = uncategorized.filter(f => f.id !== folderId);
+    sourceUncategorized.forEach((f, pos) => {
+      newPositions[f.id] = { categoryId: null, position: pos };
+    });
+    catsWithFolders.forEach(({ category, folders: catFolders }) => {
+      const inCat = catFolders.filter(f => f.id !== folderId);
+      inCat.forEach((f, pos) => {
+        newPositions[f.id] = { categoryId: category.id, position: pos };
+      });
+    });
+    persistLayout({ ...layout, folderPositions: newPositions });
+  };
+
+  const reorderCategories = (categoryIds: string[]) => {
+    persistLayout({ ...layout, categoryOrder: categoryIds });
+  };
 
   const stats = {
     totalBooks: books.length,
@@ -339,14 +613,23 @@ export function useLibrary() {
   return {
     folders,
     books,
+    categories,
     loading,
     stats,
     isLocal,
     createFolder,
     updateFolder,
     deleteFolder,
+    createCategory,
+    updateCategory,
+    deleteCategory,
+    getOrderedSections,
+    reorderFolders,
+    reorderCategories,
+    reorderBooks,
     uploadBook,
     toggleBookRead,
+    setBookState,
     updateBook,
     deleteBook,
     getBooksByFolder,

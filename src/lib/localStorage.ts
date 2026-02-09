@@ -1,9 +1,18 @@
-import type { Folder, Book } from '@/types/library';
+import type { Folder, Book, FolderCategory } from '@/types/library';
 
 const FOLDERS_KEY = 'reading-shelf-folders';
 const BOOKS_KEY = 'reading-shelf-books';
+const CATEGORIES_KEY = 'reading-shelf-categories';
+const LAYOUT_KEY = 'reading-shelf-layout';
 const DB_NAME = 'reading-shelf-pdfs';
 const STORE_NAME = 'blobs';
+
+export interface FolderLayout {
+  folderPositions: Record<string, { categoryId: string | null; position: number }>;
+  categoryOrder: string[];
+  /** Por carpeta: orden de ids de libros (solo en app/localStorage). */
+  bookOrder: Record<string, string[]>;
+}
 
 export function getLocalFolders(): Folder[] {
   try {
@@ -16,6 +25,38 @@ export function getLocalFolders(): Folder[] {
 
 export function setLocalFolders(folders: Folder[]): void {
   localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
+}
+
+export function getLocalCategories(): FolderCategory[] {
+  try {
+    const raw = localStorage.getItem(CATEGORIES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setLocalCategories(categories: FolderCategory[]): void {
+  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+}
+
+export function getLocalFolderLayout(): FolderLayout {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY);
+    if (!raw) return { folderPositions: {}, categoryOrder: [], bookOrder: {} };
+    const parsed = JSON.parse(raw) as FolderLayout;
+    return {
+      folderPositions: parsed.folderPositions ?? {},
+      categoryOrder: parsed.categoryOrder ?? [],
+      bookOrder: parsed.bookOrder ?? {},
+    };
+  } catch {
+    return { folderPositions: {}, categoryOrder: [], bookOrder: {} };
+  }
+}
+
+export function setLocalFolderLayout(layout: FolderLayout): void {
+  localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
 }
 
 export function getLocalBooks(): Book[] {

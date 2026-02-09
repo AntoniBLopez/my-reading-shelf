@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Book } from '@/types/library';
+import { Book, getBookState, type BookState } from '@/types/library';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -16,21 +16,36 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { FileText, MoreVertical, Trash2, Check, Clock, BookOpen, Pencil } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { FileText, MoreVertical, Trash2, Check, Clock, Pencil, CheckCheck, BookMarked, GripVertical } from 'lucide-react';
 import PDFViewer from './PDFViewer';
 
-interface BookCardProps {
+export interface BookCardProps {
   book: Book;
+  /** Props para conectar la franja de arrastre con useSortable (drag and drop) */
+  dragHandleProps?: { listeners: object; attributes: object };
   onToggleRead: (id: string, isRead: boolean) => Promise<boolean>;
+  onSetState: (id: string, state: BookState) => Promise<boolean>;
   onRename: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
 }
 
-export function BookCard({ book, onToggleRead, onRename, onDelete, onProgressUpdate, getBookUrl }: BookCardProps) {
+export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRename, onDelete, onProgressUpdate, getBookUrl }: BookCardProps) {
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [renameTitle, setRenameTitle] = useState(book.title);
 
   useEffect(() => {
@@ -44,21 +59,45 @@ export function BookCard({ book, onToggleRead, onRename, onDelete, onProgressUpd
     if (success) setIsRenameOpen(false);
   };
 
+  const handleResetToNotStarted = async () => {
+    await onSetState(book.id, 'Pendiente');
+    setIsResetConfirmOpen(false);
+  };
+
+  const state = getBookState(book);
+
   const progressPercent = book.total_pages > 0 
     ? Math.round((book.current_page / book.total_pages) * 100) 
     : 0;
 
   return (
     <>
-      <div 
-        className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors group cursor-pointer"
-        onClick={() => setIsViewerOpen(true)}
-      >
-        <div className={`p-2 rounded-lg ${book.is_read ? 'bg-success/10' : 'bg-accent/20'}`}>
-          <FileText className={`w-4 h-4 ${book.is_read ? 'text-success' : 'text-accent'}`} />
+      <div className="flex rounded-lg bg-muted/50 hover:bg-muted transition-colors overflow-hidden">
+        <div
+          className="flex items-center justify-center shrink-0 w-9 border-r border-border/50 rounded-l-lg bg-muted/80 text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
+          aria-label="Arrastrar para ordenar"
+          {...(dragHandleProps?.attributes ?? {})}
+          {...(dragHandleProps?.listeners ?? {})}
+        >
+          <GripVertical className="w-4 h-4" />
         </div>
-        
-        <div className="flex-1 min-w-0">
+        <div
+          className="flex items-center gap-3 p-3 flex-1 min-w-0 group cursor-pointer"
+          onClick={() => setIsViewerOpen(true)}
+        >
+          <div
+            className={`p-2 rounded-lg shrink-0 ${
+              state === 'Leído' ? 'bg-success/10' : state === 'En progreso' ? 'bg-primary/10' : 'bg-accent/20'
+            }`}
+          >
+            <FileText
+              className={`w-4 h-4 ${
+                state === 'Leído' ? 'text-success' : state === 'En progreso' ? 'text-primary' : 'text-accent'
+              }`}
+            />
+          </div>
+
+          <div className="flex-1 min-w-0">
           <p className="font-medium truncate">{book.title}</p>
           <div className="flex items-center gap-2 mt-1">
             {book.total_pages > 0 ? (
@@ -74,43 +113,33 @@ export function BookCard({ book, onToggleRead, onRename, onDelete, onProgressUpd
           </div>
         </div>
 
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          {book.is_read ? (
+        <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {state === 'Leído' && (
             <Badge variant="outline" className="gap-1 border-success/30 text-success text-xs">
               <Check className="w-3 h-3" />
               Leído
             </Badge>
-          ) : (
+          )}
+          {state === 'En progreso' && (
+            <Badge variant="outline" className="gap-1 border-primary/30 text-primary text-xs">
+              <BookMarked className="w-3 h-3" />
+              En progreso
+            </Badge>
+          )}
+          {state === 'Pendiente' && (
             <Badge variant="outline" className="gap-1 text-xs">
               <Clock className="w-3 h-3" />
               Pendiente
             </Badge>
           )}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={() => setIsViewerOpen(true)}
-          >
-            <BookOpen className="w-4 h-4" />
-          </Button>
-
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
+              <Button variant="ghost" size="icon" className="h-8 w-8">
                 <MoreVertical className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="cursor-pointer">
-              <DropdownMenuItem onClick={() => setIsViewerOpen(true)}>
-                <BookOpen className="w-4 h-4 mr-2" />
-                Leer
-              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
                   setTimeout(() => setIsRenameOpen(true), 0);
@@ -119,21 +148,21 @@ export function BookCard({ book, onToggleRead, onRename, onDelete, onProgressUpd
                 <Pencil className="w-4 h-4 mr-2" />
                 Renombrar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onToggleRead(book.id, !book.is_read)}>
-                {book.is_read ? (
-                  <>
-                    <Clock className="w-4 h-4 mr-2" />
-                    Marcar como pendiente
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4 mr-2" />
-                    Marcar como leído
-                  </>
-                )}
+              <DropdownMenuItem onClick={() => onSetState(book.id, 'Leído')} disabled={state === 'Leído'}>
+                <Check className="w-4 h-4 mr-2" />
+                Marcar como leído
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => onDelete(book.id)}
+              <DropdownMenuItem
+                onSelect={() => {
+                  if (state !== 'Pendiente') setTimeout(() => setIsResetConfirmOpen(true), 0);
+                }}
+                disabled={state === 'Pendiente'}
+              >
+                <Clock className="w-4 h-4 mr-2" />
+                Marcar como pendiente
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => setTimeout(() => setIsDeleteConfirmOpen(true), 0)}
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
@@ -141,6 +170,7 @@ export function BookCard({ book, onToggleRead, onRename, onDelete, onProgressUpd
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
       </div>
 
@@ -170,6 +200,58 @@ export function BookCard({ book, onToggleRead, onRename, onDelete, onProgressUpd
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isResetConfirmOpen} onOpenChange={setIsResetConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-primary/10">
+                <CheckCheck className="w-5 h-5 text-primary" />
+              </div>
+              <AlertDialogTitle className="font-serif">¿Reiniciar progreso?</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>
+              El libro pasará a <strong>página 1</strong> y se marcará como <strong>pendiente</strong>. ¿Continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetToNotStarted} className="gap-2">
+              <CheckCheck className="w-4 h-4" />
+              Sí, reiniciar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-destructive/10">
+                <Trash2 className="w-5 h-5 text-destructive" />
+              </div>
+              <AlertDialogTitle className="font-serif">¿Eliminar libro?</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>
+              Se eliminará <strong>{book.title}</strong>. Podrás deshacer desde la notificación durante unos segundos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setIsDeleteConfirmOpen(false);
+                onDelete(book.id);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
