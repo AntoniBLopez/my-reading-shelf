@@ -68,8 +68,8 @@ interface FolderCardProps {
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
   onReorderBooks?: (folderId: string, fromIndex: number, toIndex: number) => void;
-  /** Abre el diálogo de nueva categoría (desde el menú de la carpeta) */
-  onOpenCreateCategory?: () => void;
+  /** Abre el diálogo de nueva categoría; si se pasa folderId, esa carpeta se asignará a la nueva categoría */
+  onOpenCreateCategory?: (folderId: string) => void;
 }
 
 function SortableBookCard({
@@ -248,7 +248,7 @@ export function FolderCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onOpenCreateCategory?.()}>
+              <DropdownMenuItem onClick={() => onOpenCreateCategory?.(folder.id)}>
                 <Tag className="w-4 h-4 mr-2" />
                 Crear categoría
               </DropdownMenuItem>

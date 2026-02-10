@@ -26,6 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { FileText, MoreVertical, Trash2, Check, Clock, Pencil, CheckCheck, BookMarked, GripVertical } from 'lucide-react';
 import PDFViewer from './PDFViewer';
 
@@ -98,7 +99,14 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
           </div>
 
           <div className="flex-1 min-w-0">
-          <p className="font-medium truncate">{book.title}</p>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p className="font-medium truncate">{book.title}</p>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[min(90vw,320px)]">
+              {book.title}
+            </TooltipContent>
+          </Tooltip>
           <div className="flex items-center gap-2 mt-1">
             {book.total_pages > 0 ? (
               <>

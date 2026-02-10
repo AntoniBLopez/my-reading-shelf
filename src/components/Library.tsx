@@ -11,7 +11,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  closestCenter,
+  rectIntersection,
+  useDroppable,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -30,6 +31,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { MoreVertical, Pencil, Trash2 } from 'lucide-react';
 
 const SECTION_UNCATEGORIZED = 'uncategorized';
@@ -85,7 +96,7 @@ function SortableFolderCard({
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
   onReorderBooks: (folderId: string, fromIndex: number, toIndex: number) => void;
-  onOpenCreateCategory?: () => void;
+  onOpenCreateCategory?: (folderId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `folder-${folder.id}`,
@@ -95,7 +106,7 @@ function SortableFolderCard({
     transition,
   };
   return (
-    <div ref={setNodeRef} style={style} className={isDragging ? 'opacity-50' : ''}>
+    <div ref={setNodeRef} style={style} className={`min-w-0 ${isDragging ? 'opacity-50' : ''}`}>
       <div className="flex items-start">
         <div
           className="flex items-center justify-center shrink-0 w-10 h-[102px] border-y border-l border-border border-r-0 rounded-l-lg rounded-r-none bg-muted/30"
@@ -134,6 +145,18 @@ function SortableFolderCard({
   );
 }
 
+function SectionDropZone({ dropId, children }: { dropId: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: dropId });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`min-h-[84px] rounded-xl transition-colors ${isOver ? 'bg-primary/10 ring-2 ring-primary/30' : ''}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function Library({
   folders,
   books,
@@ -161,13 +184,36 @@ export function Library({
   const hasCategories = categories.length > 0;
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const handleOpenCreateCategory = () => {
+  const [createCategoryFromFolderId, setCreateCategoryFromFolderId] = useState<string | null>(null);
+  const handleOpenCreateCategory = (folderId: string) => {
+    setCreateCategoryFromFolderId(folderId);
     setCreateCategoryOpen(true);
     setNewCategoryName('');
   };
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [deleteCategoryConfirmId, setDeleteCategoryConfirmId] = useState<string | null>(null);
+
+  const getBookCountInCategory = (categoryId: string) => {
+    const sec = sections.categories.find(c => c.category.id === categoryId);
+    if (!sec) return 0;
+    return sec.folders.reduce((n, f) => n + getBooksByFolder(f.id).length, 0);
+  };
+
+  const handleRequestDeleteCategory = (categoryId: string) => {
+    if (getBookCountInCategory(categoryId) >= 1) {
+      setDeleteCategoryConfirmId(categoryId);
+    } else {
+      onDeleteCategory(categoryId);
+    }
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!deleteCategoryConfirmId) return;
+    await onDeleteCategory(deleteCategoryConfirmId);
+    setDeleteCategoryConfirmId(null);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -182,9 +228,13 @@ export function Library({
   const handleCreateCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) return;
-    await onCreateCategory(name);
+    const category = await onCreateCategory(name);
     setNewCategoryName('');
     setCreateCategoryOpen(false);
+    if (category && createCategoryFromFolderId) {
+      onReorderFolders(createCategoryFromFolderId, category.id, 0);
+      setCreateCategoryFromFolderId(null);
+    }
   };
 
   const handleUpdateCategory = async () => {
@@ -195,8 +245,19 @@ export function Library({
 
   const getTargetFromOver = (overId: string | null, activeFolderId: string): { categoryId: string | null; index: number } | null => {
     if (!overId) return null;
-    if (!String(overId).startsWith('folder-')) return null;
-    const overFolderId = String(overId).replace('folder-', '');
+    const overStr = String(overId);
+    if (overStr.startsWith('drop-')) {
+      if (overStr === 'drop-uncategorized') {
+        const index = sections.uncategorized.filter(f => f.id !== activeFolderId).length;
+        return { categoryId: null, index };
+      }
+      const categoryId = overStr.replace('drop-', '');
+      const sec = sections.categories.find(c => c.category.id === categoryId);
+      const index = sec ? sec.folders.filter(f => f.id !== activeFolderId).length : 0;
+      return { categoryId, index };
+    }
+    if (!overStr.startsWith('folder-')) return null;
+    const overFolderId = overStr.replace('folder-', '');
     if (overFolderId === activeFolderId) return null;
     for (let i = 0; i < sections.uncategorized.length; i++) {
       if (sections.uncategorized[i].id === overFolderId) return { categoryId: null, index: i };
@@ -215,9 +276,9 @@ export function Library({
 
   const handleDragEnd = (event: DragEndEvent) => {
     const activeId = event.active.id;
-    const overId = event.over?.id ?? null;
+    const overId = event.over?.id != null ? String(event.over.id) : null;
     setActiveFolderId(null);
-    if (!activeId || !String(activeId).startsWith('folder-')) return;
+    if (activeId == null || !String(activeId).startsWith('folder-')) return;
     const folderId = String(activeId).replace('folder-', '');
     const target = getTargetFromOver(overId, folderId);
     if (!target) return;
@@ -231,8 +292,11 @@ export function Library({
     isCategory?: boolean,
     categoryId?: string
   ) => (
-    <div key={sectionId} className="space-y-3">
-      <div className="flex items-center gap-2">
+    <div
+      key={sectionId}
+      className="rounded-2xl border border-border bg-muted/20 dark:bg-muted/10 p-4 shadow-sm"
+    >
+      <div className="flex items-center gap-2 mb-3">
         {isCategory && categoryId ? (
           <div className="flex items-center gap-2 flex-1">
             {editingCategoryId === categoryId ? (
@@ -265,7 +329,7 @@ export function Library({
                       <Pencil className="w-4 h-4 mr-2" />
                       Editar
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onDeleteCategory(categoryId)} className="text-destructive">
+                    <DropdownMenuItem onClick={() => handleRequestDeleteCategory(categoryId)} className="text-destructive">
                       <Trash2 className="w-4 h-4 mr-2" />
                       Eliminar categoría
                     </DropdownMenuItem>
@@ -278,28 +342,28 @@ export function Library({
           <h2 className="font-serif text-lg font-semibold text-muted-foreground">{title}</h2>
         )}
       </div>
-      <SortableContext items={sectionFolders.map(f => `folder-${f.id}`)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-3">
+      <SectionDropZone dropId={categoryId === undefined ? 'drop-uncategorized' : `drop-${categoryId}`}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {sectionFolders.map(folder => (
             <SortableFolderCard
-              key={folder.id}
-              folder={folder}
-              books={getBooksByFolder(folder.id)}
-              onUpdate={onUpdateFolder}
-              onDelete={onDeleteFolder}
-              onUploadBook={onUploadBook}
-              onToggleBookRead={onToggleBookRead}
-              onSetBookState={onSetBookState}
-              onRenameBook={onRenameBook}
-              onDeleteBook={onDeleteBook}
-              onProgressUpdate={onProgressUpdate}
-              getBookUrl={getBookUrl}
-              onReorderBooks={onReorderBooks}
-              onOpenCreateCategory={handleOpenCreateCategory}
-            />
+            key={folder.id}
+            folder={folder}
+            books={getBooksByFolder(folder.id)}
+            onUpdate={onUpdateFolder}
+            onDelete={onDeleteFolder}
+            onUploadBook={onUploadBook}
+            onToggleBookRead={onToggleBookRead}
+            onSetBookState={onSetBookState}
+            onRenameBook={onRenameBook}
+            onDeleteBook={onDeleteBook}
+            onProgressUpdate={onProgressUpdate}
+            getBookUrl={getBookUrl}
+            onReorderBooks={onReorderBooks}
+            onOpenCreateCategory={handleOpenCreateCategory}
+          />
           ))}
         </div>
-      </SortableContext>
+      </SectionDropZone>
     </div>
   );
 
@@ -323,7 +387,7 @@ export function Library({
           </p>
           <CreateFolderDialog onCreate={onCreateFolder} />
         </div>
-        <Dialog open={createCategoryOpen} onOpenChange={setCreateCategoryOpen}>
+        <Dialog open={createCategoryOpen} onOpenChange={(open) => { setCreateCategoryOpen(open); if (!open) setCreateCategoryFromFolderId(null); }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="font-serif">Nueva categoría</DialogTitle>
@@ -357,7 +421,7 @@ export function Library({
         </div>
         <div className="flex items-center gap-2">
           {hasCategories && (
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => setCreateCategoryOpen(true)}>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => { setCreateCategoryFromFolderId(null); setCreateCategoryOpen(true); setNewCategoryName(''); }}>
               <Tag className="w-4 h-4" />
               Nueva categoría
             </Button>
@@ -368,14 +432,14 @@ export function Library({
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={rectIntersection}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={allFolderIds.map(id => `folder-${id}`)} strategy={verticalListSortingStrategy}>
           {hasCategories ? (
             <div className="space-y-8">
-              {sections.uncategorized.length > 0 && renderSection(SECTION_UNCATEGORIZED, 'Sin categoría', sections.uncategorized)}
+              {renderSection(SECTION_UNCATEGORIZED, 'Sin categoría', sections.uncategorized)}
               {sections.categories.map(({ category, folders: catFolders }) =>
                 renderSection(`section-${category.id}`, category.name, catFolders, true, category.id)
               )}
@@ -426,7 +490,7 @@ export function Library({
         </DragOverlay>
       </DndContext>
 
-      <Dialog open={createCategoryOpen} onOpenChange={setCreateCategoryOpen}>
+      <Dialog open={createCategoryOpen} onOpenChange={(open) => { setCreateCategoryOpen(open); if (!open) setCreateCategoryFromFolderId(null); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="font-serif">Nueva categoría</DialogTitle>
@@ -445,6 +509,26 @@ export function Library({
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteCategoryConfirmId} onOpenChange={(open) => { if (!open) setDeleteCategoryConfirmId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-serif">
+              ¿Eliminar categoría {deleteCategoryConfirmId ? `«${sections.categories.find(c => c.category.id === deleteCategoryConfirmId)?.category.name ?? ''}»` : ''}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta categoría contiene al menos un libro en sus carpetas. Las carpetas pasarán a &quot;Sin categoría&quot; y los libros no se eliminarán.
+              ¿Quieres eliminar la categoría de todos modos?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteCategory} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

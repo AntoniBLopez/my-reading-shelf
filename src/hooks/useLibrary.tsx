@@ -577,24 +577,33 @@ export function useLibrary() {
     const folder = folders.find(f => f.id === folderId);
     if (!folder) return;
     const { uncategorized, categories: catsWithFolders } = getOrderedSections();
+    const newPositions = { ...layout.folderPositions };
+
     const targetFolderIds =
       targetCategoryId === null
         ? uncategorized.map(f => f.id).filter(id => id !== folderId)
         : (catsWithFolders.find(c => c.category.id === targetCategoryId)?.folders ?? []).map(f => f.id).filter(id => id !== folderId);
     const inserted = [...targetFolderIds.slice(0, targetIndex), folderId, ...targetFolderIds.slice(targetIndex)];
-    const newPositions = { ...layout.folderPositions };
     inserted.forEach((id, pos) => {
       newPositions[id] = { categoryId: targetCategoryId, position: pos };
     });
+
     const sourceUncategorized = uncategorized.filter(f => f.id !== folderId);
     sourceUncategorized.forEach((f, pos) => {
       newPositions[f.id] = { categoryId: null, position: pos };
     });
+
     catsWithFolders.forEach(({ category, folders: catFolders }) => {
-      const inCat = catFolders.filter(f => f.id !== folderId);
-      inCat.forEach((f, pos) => {
-        newPositions[f.id] = { categoryId: category.id, position: pos };
-      });
+      if (category.id === targetCategoryId) {
+        inserted.forEach((id, pos) => {
+          newPositions[id] = { categoryId: category.id, position: pos };
+        });
+      } else {
+        const inCat = catFolders.filter(f => f.id !== folderId);
+        inCat.forEach((f, pos) => {
+          newPositions[f.id] = { categoryId: category.id, position: pos };
+        });
+      }
     });
     persistLayout({ ...layout, folderPositions: newPositions });
   };
