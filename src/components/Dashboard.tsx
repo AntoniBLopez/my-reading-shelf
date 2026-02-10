@@ -18,14 +18,14 @@ export function Dashboard({ stats }: DashboardProps) {
 
   const statCards = [
     {
-      title: 'Total de Libros',
+      title: 'Total',
       value: stats.totalBooks,
       icon: BookOpen,
       color: 'text-primary',
       bgColor: 'bg-primary/10',
     },
     {
-      title: 'Libros Leídos',
+      title: 'Leídos',
       value: stats.readBooks,
       icon: BookCheck,
       color: 'text-success',
@@ -35,7 +35,7 @@ export function Dashboard({ stats }: DashboardProps) {
       title: 'Por Leer',
       value: stats.unreadBooks,
       icon: Clock,
-      color: 'text-accent',
+      color: 'text-muted-foreground',
       bgColor: 'bg-accent/20',
     },
     {

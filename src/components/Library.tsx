@@ -634,10 +634,11 @@ export function Library({
             {hasCategories ? 'Organiza tus carpetas en categorías y ordena por arrastre' : 'Organiza tus libros en carpetas. Arrastra para ordenar.'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2 h-10" onClick={() => { setCreateCategoryFromFolderId(null); setCreateCategoryOpen(true); setNewCategoryName(''); }}>
-            <Tag className="w-4 h-4" />
-            Nueva categoría
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" className="gap-2 h-10 shrink-0" onClick={() => { setCreateCategoryFromFolderId(null); setCreateCategoryOpen(true); setNewCategoryName(''); }}>
+            <Tag className="w-4 h-4 shrink-0" />
+            <span className="sm:hidden">Categoría</span>
+            <span className="hidden sm:inline">Nueva categoría</span>
           </Button>
           <CreateFolderDialog onCreate={onCreateFolder} />
           {onRefresh && (
@@ -779,7 +780,7 @@ export function Library({
       </Dialog>
 
       <AlertDialog open={!!deleteCategoryConfirmId} onOpenChange={(open) => { if (!open) setDeleteCategoryConfirmId(null); }}>
-        <AlertDialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[85vh] overflow-y-auto">
+        <AlertDialogContent className="max-h-[85vh] overflow-y-auto">
           <AlertDialogHeader className="w-full">
             <AlertDialogTitle className="font-serif">
               ¿Eliminar categoría {deleteCategoryConfirmId ? `«${sections.categories.find(c => c.category.id === deleteCategoryConfirmId)?.category.name ?? ''}»` : ''}?

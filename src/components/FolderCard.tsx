@@ -419,7 +419,7 @@ export function FolderCard({
       </Dialog>
 
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-        <AlertDialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[85vh] overflow-y-auto">
+        <AlertDialogContent className="max-h-[85vh] overflow-y-auto">
           <AlertDialogHeader className="w-full">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-full bg-destructive/10 shrink-0">

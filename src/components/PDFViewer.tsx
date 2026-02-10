@@ -68,11 +68,17 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const containerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; scale: number; distance: number } | null>(null);
+  const scaleRef = useRef<number>(0.7);
+  const pinchRafRef = useRef<number | null>(null);
+  const pendingScaleRef = useRef<number | null>(null);
+  const isPinchingRef = useRef(false);
   const [zoomInputValue, setZoomInputValue] = useState('');
   const zoomInputRef = useRef<HTMLInputElement>(null);
   const [pageInputValue, setPageInputValue] = useState('');
   const lastPageWidthRef = useRef<number>(600);
   const resizeRafRef = useRef<number | null>(null);
+
+  scaleRef.current = scale;
 
   // Reset URL when dialog closes so next open shows loading for the (possibly new) book
   useEffect(() => {
@@ -223,6 +229,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   }, [zoomInputValue, scale]);
 
   const syncZoomInputFromScale = useCallback(() => {
+    if (isPinchingRef.current) return;
     setZoomInputValue(String(Math.round(scale * 100)));
   }, [scale]);
 
@@ -230,7 +237,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
     syncZoomInputFromScale();
   }, [scale, syncZoomInputFromScale]);
 
-  const getTouchDistance = (touches: TouchList) => {
+  const getTouchDistance = (touches: React.TouchEvent['touches']) => {
     if (touches.length < 2) return 0;
     const a = touches[0];
     const b = touches[1];
@@ -240,30 +247,42 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       e.preventDefault();
+      isPinchingRef.current = true;
+      const dist = getTouchDistance(e.touches);
       touchStartRef.current = {
         x: 0,
         y: 0,
-        scale,
-        distance: getTouchDistance(e.touches),
+        scale: scaleRef.current,
+        distance: dist > 0 ? dist : 1,
       };
     } else if (e.touches.length === 1) {
+      isPinchingRef.current = false;
       touchStartRef.current = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY,
-        scale,
+        scale: scaleRef.current,
         distance: 0,
       };
     }
-  }, [scale]);
+  }, []);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2 && touchStartRef.current && touchStartRef.current.distance > 0) {
       e.preventDefault();
       const newDist = getTouchDistance(e.touches);
+      if (newDist < 1) return;
       const ratio = newDist / touchStartRef.current.distance;
       const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, touchStartRef.current.scale * ratio));
-      setScale(newScale);
-      touchStartRef.current = { ...touchStartRef.current, scale: newScale, distance: newDist };
+      pendingScaleRef.current = newScale;
+      if (pinchRafRef.current === null) {
+        pinchRafRef.current = requestAnimationFrame(() => {
+          pinchRafRef.current = null;
+          if (pendingScaleRef.current !== null) {
+            setScale(pendingScaleRef.current);
+            pendingScaleRef.current = null;
+          }
+        });
+      }
     }
   }, []);
 
@@ -271,6 +290,15 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
     if (e.touches.length === 0) {
       const start = touchStartRef.current;
       touchStartRef.current = null;
+      isPinchingRef.current = false;
+      if (pinchRafRef.current !== null) {
+        cancelAnimationFrame(pinchRafRef.current);
+        pinchRafRef.current = null;
+      }
+      if (pendingScaleRef.current !== null) {
+        setScale(pendingScaleRef.current);
+        pendingScaleRef.current = null;
+      }
       if (start && start.distance === 0 && e.changedTouches[0]) {
         const end = e.changedTouches[0];
         const dx = end.clientX - start.x;
@@ -281,14 +309,33 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         }
       }
     } else if (e.touches.length === 2) {
+      const dist = getTouchDistance(e.touches);
       touchStartRef.current = {
         x: 0,
         y: 0,
-        scale,
-        distance: getTouchDistance(e.touches),
+        scale: scaleRef.current,
+        distance: dist > 0 ? dist : 1,
       };
     }
-  }, [goToPage, pageNumber, scale]);
+  }, [goToPage, pageNumber]);
+
+  // Navegación con flechas del teclado
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('input') || target.closest('textarea') || target.isContentEditable) return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        goToPage(pageNumber - 1);
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        goToPage(pageNumber + 1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, pageNumber, goToPage]);
 
   // Touch listeners with passive: false so preventDefault() works for pinch (evita zoom del navegador)
   useEffect(() => {

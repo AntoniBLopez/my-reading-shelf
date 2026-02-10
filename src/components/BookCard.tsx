@@ -27,7 +27,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileText, MoreVertical, Trash2, Check, Clock, Pencil, CheckCheck, BookMarked, GripVertical } from 'lucide-react';
+import { FileText, MoreVertical, Trash2, Check, Clock, Pencil, CheckCheck, BookMarked, GripVertical, RotateCcw } from 'lucide-react';
 import PDFViewer from './PDFViewer';
 
 export interface BookCardProps {
@@ -217,7 +217,7 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
           <AlertDialogHeader>
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-full bg-primary/10">
-                <CheckCheck className="w-5 h-5 text-primary" />
+                <RotateCcw className="w-5 h-5 text-primary" />
               </div>
               <AlertDialogTitle className="font-serif">¿Reiniciar progreso?</AlertDialogTitle>
             </div>
@@ -227,16 +227,15 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleResetToNotStarted} className="gap-2">
-              <CheckCheck className="w-4 h-4" />
-              Sí, reiniciar
+            <AlertDialogAction onClick={handleResetToNotStarted}>
+              Reiniciar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-        <AlertDialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[85vh] overflow-y-auto">
+        <AlertDialogContent className="max-h-[85vh] overflow-y-auto">
           <AlertDialogHeader className="w-full">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-full bg-destructive/10 shrink-0">

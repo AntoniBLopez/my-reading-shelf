@@ -86,7 +86,10 @@
     --muted: 25 15% 18%;
     --muted-foreground: 35 15% 55%;
 
-    --accent: 350 40% 45%;
+    /* Hover en dark: */
+    /* --accent: 26 32% 17%; */ /* #3a2a1e chocolate */
+    /* --accent: 26 24% 23%; */ /* #4a3a2e marrón oscuro */
+    --accent: 25 15% 18%; /* #352d27 = rgb(53, 45, 39) */
     --accent-foreground: 40 20% 92%;
 
     --destructive: 0 55% 45%;
@@ -154,6 +157,38 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+}
+
+/* Bottom nav (mobile/tablet): no hover persistente en touch y efecto ripple */
+.bottom-nav button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+@media (hover: none) {
+  .bottom-nav button:hover:not(.bg-primary\/10) {
+    background-color: transparent !important;
+  }
+}
+@keyframes bottom-nav-ripple {
+  from {
+    transform: scale(0);
+    opacity: 0.25;
+  }
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+.bottom-nav-ripple {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  margin-left: -50px;
+  margin-top: -50px;
+  border-radius: 50%;
+  background: currentColor;
+  pointer-events: none;
+  animation: bottom-nav-ripple 0.6s ease-out forwards;
 }
 
 /* PDF viewer dark mode: contenedor de la página (barra abajo con zoom bajo). No tocar canvas ni capas para que se vea el contenido invertido. */

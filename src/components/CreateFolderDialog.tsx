@@ -39,9 +39,10 @@ export function CreateFolderDialog({ onCreate }: CreateFolderDialogProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2 gradient-hero">
-          <FolderPlus className="w-4 h-4" />
-          Nueva Carpeta
+        <Button className="gap-2 gradient-hero shrink-0">
+          <FolderPlus className="w-4 h-4 shrink-0" />
+          <span className="sm:hidden">Carpeta</span>
+          <span className="hidden sm:inline">Nueva Carpeta</span>
         </Button>
       </DialogTrigger>
       <DialogContent>
