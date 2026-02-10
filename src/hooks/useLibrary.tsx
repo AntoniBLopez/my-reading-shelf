@@ -80,20 +80,44 @@ export function useLibrary() {
     }
   }, [user, isLocal]);
 
+  const fetchCategories = useCallback(async () => {
+    if (!user) return;
+    if (isLocal) {
+      setCategories(getLocalCategories());
+      return;
+    }
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from('folder_categories')
+      .select('*')
+      .order('position', { ascending: true });
+    if (error) {
+      toast.error('Error al cargar categorías');
+      console.error(error);
+    } else {
+      const list = (data || []) as FolderCategory[];
+      setCategories(list);
+      const order = list.map(c => c.id);
+      setLayout(prev => ({ ...prev, categoryOrder: order }));
+      const currentLayout = getLocalFolderLayout();
+      setLocalFolderLayout({ ...currentLayout, categoryOrder: order });
+    }
+  }, [user, isLocal]);
+
   useEffect(() => {
     if (user) {
-      setCategories(getLocalCategories());
       setLayout(getLocalFolderLayout());
       setLoading(true);
       if (isLocal) {
+        setCategories(getLocalCategories());
         setFolders(getLocalFolders());
         setBooks(getLocalBooks());
         setLoading(false);
       } else {
-        Promise.all([fetchFolders(), fetchBooks()]).finally(() => setLoading(false));
+        Promise.all([fetchFolders(), fetchBooks(), fetchCategories()]).finally(() => setLoading(false));
       }
     }
-  }, [user, isLocal, fetchFolders, fetchBooks]);
+  }, [user, isLocal, fetchFolders, fetchBooks, fetchCategories]);
 
   const createFolder = async (name: string, description?: string) => {
     if (!user) return null;
@@ -545,15 +569,36 @@ export function useLibrary() {
 
   const createCategory = async (name: string) => {
     if (!user) return null;
-    const now = new Date().toISOString();
-    const category: FolderCategory = {
-      id: crypto.randomUUID(),
-      user_id: user.id,
-      name: name.trim(),
-      position: categories.length,
-      created_at: now,
-      updated_at: now,
-    };
+    const trimmedName = name.trim();
+    if (isLocal) {
+      const now = new Date().toISOString();
+      const category: FolderCategory = {
+        id: crypto.randomUUID(),
+        user_id: user.id,
+        name: trimmedName,
+        position: categories.length,
+        created_at: now,
+        updated_at: now,
+      };
+      const next = [...categories, category];
+      setCategories(next);
+      setLocalCategories(next);
+      persistLayout({ ...layout, categoryOrder: [...layout.categoryOrder, category.id] });
+      toast.success('Categoría creada');
+      return category;
+    }
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('folder_categories')
+      .insert({ user_id: user.id, name: trimmedName, position: categories.length })
+      .select()
+      .single();
+    if (error) {
+      toast.error('Error al crear categoría');
+      console.error(error);
+      return null;
+    }
+    const category = data as FolderCategory;
     const next = [...categories, category];
     setCategories(next);
     setLocalCategories(next);
@@ -566,11 +611,27 @@ export function useLibrary() {
     const next = categories.map(c => (c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c));
     setCategories(next);
     setLocalCategories(next);
+    if (!isLocal && supabase) {
+      const { error } = await supabase.from('folder_categories').update(updates).eq('id', id);
+      if (error) {
+        toast.error('Error al actualizar categoría');
+        console.error(error);
+        return false;
+      }
+    }
     toast.success('Categoría actualizada');
     return true;
   };
 
   const deleteCategory = async (id: string) => {
+    if (!isLocal && supabase) {
+      const { error } = await supabase.from('folder_categories').delete().eq('id', id);
+      if (error) {
+        toast.error('Error al eliminar categoría');
+        console.error(error);
+        return false;
+      }
+    }
     const nextCategories = categories.filter(c => c.id !== id);
     setCategories(nextCategories);
     setLocalCategories(nextCategories);
@@ -592,6 +653,14 @@ export function useLibrary() {
     const folderIds = sec?.folders.map(f => f.id) ?? [];
     for (const fid of folderIds) {
       await deleteFolder(fid);
+    }
+    if (!isLocal && supabase) {
+      const { error } = await supabase.from('folder_categories').delete().eq('id', id);
+      if (error) {
+        toast.error('Error al eliminar categoría');
+        console.error(error);
+        return false;
+      }
     }
     const nextCategories = categories.filter(c => c.id !== id);
     setCategories(nextCategories);
@@ -641,8 +710,15 @@ export function useLibrary() {
     persistLayout({ ...layout, folderPositions: newPositions });
   };
 
-  const reorderCategories = (categoryIds: string[]) => {
+  const reorderCategories = async (categoryIds: string[]) => {
     persistLayout({ ...layout, categoryOrder: categoryIds });
+    if (!isLocal && supabase) {
+      await Promise.all(
+        categoryIds.map((id, index) =>
+          supabase.from('folder_categories').update({ position: index }).eq('id', id)
+        )
+      );
+    }
   };
 
   const stats = {
