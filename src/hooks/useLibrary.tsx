@@ -148,7 +148,7 @@ export function useLibrary() {
     if (!supabase) return null;
     const { data, error } = await supabase
       .from('folders')
-      .insert({ name, description, user_id: user.id })
+      .insert({ name, description, user_id: user.id, category_id: null, position: 0 })
       .select()
       .single();
     if (error) {
@@ -156,17 +156,19 @@ export function useLibrary() {
       console.error(error);
       return null;
     }
-    setFolders(prev => [data, ...prev]);
-    const newPositions = { ...layout.folderPositions };
-    newPositions[data.id] = { categoryId: null, position: 0 };
-    Object.keys(newPositions).forEach(id => {
-      if (id !== data.id && newPositions[id].categoryId === null) newPositions[id] = { ...newPositions[id], position: newPositions[id].position + 1 };
-    });
-    const newLayout = { ...layout, folderPositions: newPositions };
-    setLayout(newLayout);
-    setLocalFolderLayout(newLayout);
+    const newFolder = { ...data, category_id: null, position: 0 } as Folder;
+    const uncategorized = folders.filter(f => !f.category_id);
+    if (uncategorized.length > 0) {
+      await Promise.all(
+        uncategorized.map(f => supabase.from('folders').update({ position: (f.position ?? 0) + 1 }).eq('id', f.id))
+      );
+    }
+    setFolders(prev => [
+      newFolder,
+      ...prev.map(f => (f.category_id ? f : { ...f, position: (f.position ?? 0) + 1 })),
+    ]);
     toast.success('Carpeta creada');
-    return data;
+    return newFolder;
   };
 
   const updateFolder = async (id: string, updates: Partial<Pick<Folder, 'name' | 'description'>>) => {
@@ -541,11 +543,18 @@ export function useLibrary() {
   const getOrderedSections = (): { uncategorized: Folder[]; categories: { category: FolderCategory; folders: Folder[] }[] } => {
     const folderPositions = layout.folderPositions;
     const categoryOrder = layout.categoryOrder;
-    const withLayout = folders.map(f => ({
-      ...f,
-      category_id: folderPositions[f.id]?.categoryId ?? f.category_id ?? null,
-      position: folderPositions[f.id]?.position ?? f.position ?? 999,
-    }));
+    // Con Supabase usamos solo la BD como fuente de verdad (category_id y position) para evitar que localStorage rompa la consistencia entre dispositivos
+    const withLayout = isLocal
+      ? folders.map(f => ({
+          ...f,
+          category_id: folderPositions[f.id]?.categoryId ?? f.category_id ?? null,
+          position: folderPositions[f.id]?.position ?? f.position ?? 999,
+        }))
+      : folders.map(f => ({
+          ...f,
+          category_id: f.category_id ?? null,
+          position: f.position ?? 999,
+        }));
     const uncategorized = withLayout.filter(f => !f.category_id).sort((a, b) => a.position - b.position);
     const sortedCategories = [...categories].sort((a, b) => {
       const ai = categoryOrder.indexOf(a.id);
@@ -718,17 +727,28 @@ export function useLibrary() {
     });
     persistLayout({ ...layout, folderPositions: newPositions });
 
+    if (!isLocal) {
+      setFolders(prev =>
+        prev.map(f => {
+          const p = newPositions[f.id];
+          if (!p) return f;
+          return { ...f, category_id: p.categoryId, position: p.position };
+        })
+      );
+    }
+
     if (!isLocal && supabase) {
-      supabase
-        .from('folders')
-        .update({ category_id: targetCategoryId })
-        .eq('id', folderId)
-        .then(({ error }) => {
-          if (error) {
-            toast.error('Error al guardar la categoría de la carpeta');
-            console.error(error);
-          }
-        });
+      Promise.all(
+        Object.entries(newPositions).map(([id, { categoryId, position }]) =>
+          supabase.from('folders').update({ category_id: categoryId, position }).eq('id', id)
+        )
+      ).then(results => {
+        const err = results.find(r => r.error);
+        if (err?.error) {
+          toast.error('Error al guardar el orden de las carpetas');
+          console.error(err.error);
+        }
+      });
     }
   };
 
