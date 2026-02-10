@@ -109,8 +109,6 @@ export function Sidebar({ currentView, onViewChange, onNavigate, collapsed = fal
           </Button>
         )}
       </div>
-        </>
-      )}
     </div>
   );
 }
