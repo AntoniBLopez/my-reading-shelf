@@ -492,7 +492,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         {/* Área de pantalla completa: toolbar + contenido (zoom y páginas disponibles en fullscreen) */}
         <div ref={fullscreenRef} className="flex-1 flex flex-col min-h-0 min-w-0 relative">
           {isFullscreen && showFullscreenHint && isMobileOrTablet && (
-            <div className="absolute top-[60px] left-0 right-0 z-10 flex justify-center pt-3 pb-2 px-4 pointer-events-none">
+            <div className="absolute top-[40px] left-0 right-0 z-10 flex justify-center pt-3 pb-2 px-4 pointer-events-none">
               <p className="text-xs sm:text-sm text-center text-foreground/90 bg-background/95 backdrop-blur rounded-lg px-3 py-2 shadow-md border border-border/50">
                 Haz doble toque para ocultar/mostrar la barra
               </p>
@@ -605,7 +605,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
           <div className={`relative flex-1 overflow-auto min-w-0 flex flex-col ${viewerDarkMode ? 'bg-neutral-900' : 'bg-muted/30'}`}>
             <div
               ref={containerRef}
-              className={`relative flex-1 overflow-auto flex items-start justify-center p-4 min-w-0 touch-manipulation ${viewerDarkMode ? 'bg-black' : ''}`}
+              className={`relative flex-1 overflow-auto flex items-center justify-center p-4 min-w-0 touch-manipulation ${viewerDarkMode ? 'bg-black' : ''}`}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -633,7 +633,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
 
               {pdfUrl && !error && (
                 <div
-                  className={`min-h-full w-full flex items-start justify-center ${viewerDarkMode ? 'bg-[#000000]' : 'bg-white'}`}
+                  className={`min-h-full w-full flex items-center justify-center ${viewerDarkMode ? 'bg-[#000000]' : 'bg-white'}`}
                 >
                   <Document
                     file={pdfUrl}

@@ -131,11 +131,13 @@ function SortableFolderCard({
         {showDragHandle && (
           <div
             className="flex items-center justify-center shrink-0 w-10 h-[102px] border-y border-l border-border border-r-0 rounded-l-lg rounded-r-none bg-muted/30"
+            style={{ touchAction: 'none' }}
             aria-hidden
           >
             <button
               type="button"
-              className="w-full h-full flex items-center justify-center rounded-l-[7px] rounded-r-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted/50 touch-none transition-colors"
+              className="w-full h-full flex items-center justify-center rounded-l-[7px] rounded-r-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              style={{ touchAction: 'none' }}
               {...listeners}
               {...attributes}
               aria-label="Arrastrar carpeta para ordenar"
@@ -349,12 +351,13 @@ export function Library({
     setDeleteCategoryConfirmId(null);
   };
 
+  // TouchSensor primero para que en tablet/móvil se use touch (delay+tolerance); en desktop PointerSensor
   const sensors = useSensors(
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 8 },
+    }),
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 8 },
     })
   );
 
@@ -520,7 +523,8 @@ export function Library({
       <div className="flex items-center gap-2 mb-3">
         {options?.showCategoryDragHandle && options?.dragHandleListeners != null && options?.dragHandleAttributes != null && (
           <div
-            className="flex items-center justify-center shrink-0 w-8 h-8 rounded-lg cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted/50 touch-none"
+            className="flex items-center justify-center shrink-0 w-8 h-8 rounded-lg cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            style={{ touchAction: 'none' }}
             {...options.dragHandleListeners}
             {...options.dragHandleAttributes}
             aria-label="Arrastrar para ordenar categoría"
@@ -590,20 +594,20 @@ export function Library({
               <SortableFolderCard
                 key={folder.id}
                 folder={folder}
-              books={getBooksByFolder(folder.id)}
-              showDragHandle={showFolderDragHandle}
-              onUpdate={onUpdateFolder}
-              onDelete={onDeleteFolder}
-              onUploadBook={onUploadBook}
-              onToggleBookRead={onToggleBookRead}
-              onSetBookState={onSetBookState}
-              onRenameBook={onRenameBook}
-              onDeleteBook={onDeleteBook}
-              onProgressUpdate={onProgressUpdate}
-              getBookUrl={getBookUrl}
-              onReorderBooks={onReorderBooks}
-              onOpenCreateCategory={handleOpenCreateCategory}
-            />
+                books={getBooksByFolder(folder.id)}
+                showDragHandle={showFolderDragHandle}
+                onUpdate={onUpdateFolder}
+                onDelete={onDeleteFolder}
+                onUploadBook={onUploadBook}
+                onToggleBookRead={onToggleBookRead}
+                onSetBookState={onSetBookState}
+                onRenameBook={onRenameBook}
+                onDeleteBook={onDeleteBook}
+                onProgressUpdate={onProgressUpdate}
+                getBookUrl={getBookUrl}
+                onReorderBooks={onReorderBooks}
+                onOpenCreateCategory={handleOpenCreateCategory}
+              />
             )
           )}
           {showCollapse && (
@@ -651,7 +655,7 @@ export function Library({
         </div>
         <div className="relative hidden lg:block">
           <div className="grid grid-cols-2 gap-3">
-            {list.slice(0, limit).map(folder =>
+{list.slice(0, limit).map(folder =>
               String(folder.id) === String(activeFolderId) ? (
                 <FolderSlotPlaceholder key={folder.id} showDragHandle={showFolderDragHandle} />
               ) : (
@@ -659,19 +663,19 @@ export function Library({
                   key={folder.id}
                   folder={folder}
                   books={getBooksByFolder(folder.id)}
-                showDragHandle={showFolderDragHandle}
-                onUpdate={onUpdateFolder}
-                onDelete={onDeleteFolder}
-                onUploadBook={onUploadBook}
-                onToggleBookRead={onToggleBookRead}
-                onSetBookState={onSetBookState}
-                onRenameBook={onRenameBook}
-                onDeleteBook={onDeleteBook}
-                onProgressUpdate={onProgressUpdate}
-                getBookUrl={getBookUrl}
-                onReorderBooks={onReorderBooks}
-                onOpenCreateCategory={handleOpenCreateCategory}
-              />
+                  showDragHandle={showFolderDragHandle}
+                  onUpdate={onUpdateFolder}
+                  onDelete={onDeleteFolder}
+                  onUploadBook={onUploadBook}
+                  onToggleBookRead={onToggleBookRead}
+                  onSetBookState={onSetBookState}
+                  onRenameBook={onRenameBook}
+                  onDeleteBook={onDeleteBook}
+                  onProgressUpdate={onProgressUpdate}
+                  getBookUrl={getBookUrl}
+                  onReorderBooks={onReorderBooks}
+                  onOpenCreateCategory={handleOpenCreateCategory}
+                />
               )
             )}
             {showCollapse && (
@@ -921,7 +925,7 @@ export function Library({
 
         <DragOverlay dropAnimation={null}>
           {activeFolderId ? (
-            <div className="min-w-0 opacity-90 shadow-lg touch-none select-none flex items-start" style={{ touchAction: 'none' }}>
+            <div className="min-w-0 opacity-95 shadow-lg touch-none select-none flex items-start" style={{ touchAction: 'none' }}>
               {showFolderDragHandle && (
                 <div className="shrink-0 w-10 h-[102px] border-y border-l border-border border-r-0 rounded-l-lg rounded-r-none bg-muted/30 flex items-center justify-center" aria-hidden>
                   <GripVertical className="w-4 h-4 text-muted-foreground" />
