@@ -539,6 +539,39 @@ export function useLibrary() {
     persistLayout({ ...layout, bookOrder: newBookOrder });
   };
 
+  const moveBook = async (bookId: string, targetFolderId: string): Promise<boolean> => {
+    const book = books.find(b => b.id === bookId);
+    if (!book || book.folder_id === targetFolderId) return false;
+    const sourceFolderId = book.folder_id;
+    const updates = { folder_id: targetFolderId };
+    if (isLocal) {
+      const next = getLocalBooks().map(b => (b.id === bookId ? { ...b, ...updates } : b));
+      setLocalBooks(next);
+      setBooks(next);
+    } else if (supabase) {
+      const { error } = await supabase.from('books').update(updates).eq('id', bookId);
+      if (error) {
+        toast.error('Error al mover el libro');
+        console.error(error);
+        return false;
+      }
+      setBooks(prev => prev.map(b => (b.id === bookId ? { ...b, ...updates } : b)));
+    } else return false;
+    const sourceOrder = (layout.bookOrder?.[sourceFolderId] ?? []).filter((id: string) => id !== bookId);
+    const targetOrder = layout.bookOrder?.[targetFolderId] ?? getBooksByFolder(targetFolderId).map(b => b.id);
+    const newTargetOrder = targetOrder.includes(bookId) ? targetOrder : [...targetOrder, bookId];
+    persistLayout({
+      ...layout,
+      bookOrder: {
+        ...layout.bookOrder,
+        [sourceFolderId]: sourceOrder,
+        [targetFolderId]: newTargetOrder,
+      },
+    });
+    toast.success('Libro movido');
+    return true;
+  };
+
   /** Carpetas y categorías ordenadas para la UI: sin categoría primero, luego cada categoría. */
   const getOrderedSections = (): { uncategorized: Folder[]; categories: { category: FolderCategory; folders: Folder[] }[] } => {
     const folderPositions = layout.folderPositions;
@@ -794,6 +827,7 @@ export function useLibrary() {
     reorderFolders,
     reorderCategories,
     reorderBooks,
+    moveBook,
     uploadBook,
     toggleBookRead,
     setBookState,

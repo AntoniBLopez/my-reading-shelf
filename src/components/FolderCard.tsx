@@ -72,6 +72,10 @@ interface FolderCardProps {
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
   onReorderBooks?: (folderId: string, fromIndex: number, toIndex: number) => void;
+  /** Mover libro a otra carpeta (desde menú 3 puntos) */
+  onMoveBook?: (bookId: string, targetFolderId: string) => Promise<boolean>;
+  /** Todas las carpetas (para el submenú "Mover de carpeta"); se filtra la actual dentro del componente */
+  allFolders?: { id: string; name: string }[];
   /** Abre el diálogo de nueva categoría; si se pasa folderId, esa carpeta se asignará a la nueva categoría */
   onOpenCreateCategory?: (folderId: string) => void;
 }
@@ -85,6 +89,8 @@ function SortableBookCard({
   onDeleteBook,
   onProgressUpdate,
   getBookUrl,
+  onMoveToFolder,
+  foldersForMove,
 }: {
   book: Book;
   showDragHandle: boolean;
@@ -94,6 +100,8 @@ function SortableBookCard({
   onDeleteBook: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
+  onMoveToFolder?: (bookId: string, targetFolderId: string) => Promise<boolean>;
+  foldersForMove?: { id: string; name: string }[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `book-${book.id}`,
@@ -110,6 +118,8 @@ function SortableBookCard({
         onDelete={onDeleteBook}
         onProgressUpdate={onProgressUpdate}
         getBookUrl={getBookUrl}
+        onMoveToFolder={onMoveToFolder}
+        foldersForMove={foldersForMove}
       />
     </div>
   );
@@ -129,6 +139,8 @@ export function FolderCard({
   onProgressUpdate,
   getBookUrl,
   onReorderBooks,
+  onMoveBook,
+  allFolders,
   onOpenCreateCategory,
 }: FolderCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -151,6 +163,8 @@ export function FolderCard({
 
   const readCount = books.filter(b => b.is_read).length;
   const totalCount = books.length;
+
+  const foldersForMove = allFolders?.filter((f) => f.id !== folder.id) ?? [];
 
   const bookSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -362,35 +376,39 @@ export function FolderCard({
                     strategy={verticalListSortingStrategy}
                   >
                     {initialBooks.map((book) => (
-                      <SortableBookCard
-                        key={book.id}
-                        book={book}
-                        showDragHandle={books.length > 1}
-                        onToggleBookRead={onToggleBookRead}
-                        onSetBookState={onSetBookState}
-                        onRenameBook={onRenameBook}
-                        onDeleteBook={onDeleteBook}
-                        onProgressUpdate={onProgressUpdate}
-                        getBookUrl={getBookUrl}
-                      />
-                    ))}
-                    {showBooksCollapse && (
-                      <div
-                        className={`expandable-section expandable-section--instant ${booksExpanded ? 'expandable-section--open' : 'expandable-section--closed'}`}
-                      >
-                        <div className="space-y-2">
-                          {restBooks.map((book) => (
-                            <SortableBookCard
-                              key={book.id}
-                              book={book}
-                              showDragHandle={books.length > 1}
-                              onToggleBookRead={onToggleBookRead}
-                              onSetBookState={onSetBookState}
-                              onRenameBook={onRenameBook}
-                              onDeleteBook={onDeleteBook}
-                              onProgressUpdate={onProgressUpdate}
-                              getBookUrl={getBookUrl}
-                            />
+<SortableBookCard
+                      key={book.id}
+                      book={book}
+                      showDragHandle={books.length > 1}
+                      onToggleBookRead={onToggleBookRead}
+                      onSetBookState={onSetBookState}
+                      onRenameBook={onRenameBook}
+                      onDeleteBook={onDeleteBook}
+                      onProgressUpdate={onProgressUpdate}
+                      getBookUrl={getBookUrl}
+                      onMoveToFolder={onMoveBook}
+                      foldersForMove={foldersForMove}
+                    />
+                  ))}
+                  {showBooksCollapse && (
+                    <div
+                      className={`expandable-section expandable-section--instant ${booksExpanded ? 'expandable-section--open' : 'expandable-section--closed'}`}
+                    >
+                      <div className="space-y-2">
+                        {restBooks.map((book) => (
+                          <SortableBookCard
+                            key={book.id}
+                            book={book}
+                            showDragHandle={books.length > 1}
+                            onToggleBookRead={onToggleBookRead}
+                            onSetBookState={onSetBookState}
+                            onRenameBook={onRenameBook}
+                            onDeleteBook={onDeleteBook}
+                            onProgressUpdate={onProgressUpdate}
+                            getBookUrl={getBookUrl}
+                            onMoveToFolder={onMoveBook}
+                            foldersForMove={foldersForMove}
+                          />
                           ))}
                         </div>
                       </div>
@@ -409,6 +427,8 @@ export function FolderCard({
                       onDelete={onDeleteBook}
                       onProgressUpdate={onProgressUpdate}
                       getBookUrl={getBookUrl}
+                      onMoveToFolder={onMoveBook}
+                      foldersForMove={foldersForMove}
                     />
                   ))}
                   {showBooksCollapse && (
@@ -426,6 +446,8 @@ export function FolderCard({
                             onDelete={onDeleteBook}
                             onProgressUpdate={onProgressUpdate}
                             getBookUrl={getBookUrl}
+                            onMoveToFolder={onMoveBook}
+                            foldersForMove={foldersForMove}
                           />
                         ))}
                       </div>

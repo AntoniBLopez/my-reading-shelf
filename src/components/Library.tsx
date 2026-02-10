@@ -26,10 +26,30 @@ import {
   useSensors,
   pointerWithin,
   rectIntersection,
+  closestCenter,
   useDroppable,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { CSS, getEventCoordinates } from '@dnd-kit/utilities';
+import type { Modifier } from '@dnd-kit/core';
+
+/** Snaps the overlay so the left handle (grab area) is under the cursor/finger, not the center. */
+const snapLeftHandleToCursor: Modifier = (args) => {
+  const { activatorEvent, draggingNodeRect, transform } = args;
+  if (!draggingNodeRect || !activatorEvent) return transform;
+  const coords = getEventCoordinates(activatorEvent);
+  if (!coords) return transform;
+  const offsetX = coords.x - draggingNodeRect.left;
+  const offsetY = coords.y - draggingNodeRect.top;
+  const grabX = 20;
+  const grabY = draggingNodeRect.height / 2;
+  return {
+    x: transform.x + offsetX - grabX,
+    y: transform.y + offsetY - grabY,
+    scaleX: transform.scaleX,
+    scaleY: transform.scaleY,
+  };
+};
 import { Button } from '@/components/ui/button';
 import { ExpandMoreButton } from './ExpandMoreButton';
 import {
@@ -76,6 +96,7 @@ interface LibraryProps {
   onReorderFolders: (folderId: string, targetCategoryId: string | null, targetIndex: number) => void;
   onReorderCategories: (categoryIds: string[]) => void;
   onReorderBooks: (folderId: string, fromIndex: number, toIndex: number) => void;
+  onMoveBook?: (bookId: string, targetFolderId: string) => Promise<boolean>;
   onUploadBook: (folderId: string, file: File, title: string) => Promise<Book | null>;
   onToggleBookRead: (id: string, isRead: boolean) => Promise<boolean>;
   onSetBookState: (id: string, state: BookState) => Promise<boolean>;
@@ -101,6 +122,8 @@ function SortableFolderCard({
   onProgressUpdate,
   getBookUrl,
   onReorderBooks,
+  onMoveBook,
+  allFolders,
   onOpenCreateCategory,
 }: {
   folder: Folder;
@@ -116,6 +139,8 @@ function SortableFolderCard({
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
   onReorderBooks: (folderId: string, fromIndex: number, toIndex: number) => void;
+  onMoveBook?: (bookId: string, targetFolderId: string) => Promise<boolean>;
+  allFolders?: { id: string; name: string }[];
   onOpenCreateCategory?: (folderId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -126,7 +151,7 @@ function SortableFolderCard({
     transition,
   };
   return (
-    <div ref={setNodeRef} style={style} className={`min-w-0 ${isDragging ? 'opacity-40' : ''}`}>
+    <div ref={setNodeRef} style={style} className={`min-w-0 ${isDragging ? 'opacity-90 z-[100]' : ''}`}>
       <div className="flex items-start">
         {showDragHandle && (
           <div
@@ -161,6 +186,8 @@ function SortableFolderCard({
             onProgressUpdate={onProgressUpdate}
             getBookUrl={getBookUrl}
             onReorderBooks={onReorderBooks}
+            onMoveBook={onMoveBook}
+            allFolders={allFolders}
             onOpenCreateCategory={onOpenCreateCategory}
           />
         </div>
@@ -200,7 +227,7 @@ function SlotDropZone({
   return (
     <div
       ref={setNodeRef}
-      className="min-h-[84px] rounded-xl"
+      className="min-h-[102px] rounded-xl"
       style={{ gridColumn: 'span 1', gridRow: 'span 1' }}
     >
       {showPlaceholder ? <DropPlaceholder /> : null}
@@ -295,6 +322,7 @@ export function Library({
   onReorderFolders,
   onReorderCategories,
   onReorderBooks,
+  onMoveBook,
   onUploadBook,
   onToggleBookRead,
   onSetBookState,
@@ -307,6 +335,7 @@ export function Library({
 }: LibraryProps) {
   const [refreshing, setRefreshing] = useState(false);
   const sections = getOrderedSections();
+  const allFolders = [...sections.uncategorized, ...sections.categories.flatMap(c => c.folders)].map(f => ({ id: f.id, name: f.name }));
   const hasCategories = categories.length > 0;
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -320,12 +349,12 @@ export function Library({
   const [editingCategoryName, setEditingCategoryName] = useState('');
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [overlayWidth, setOverlayWidth] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<{ categoryId: string | null; index: number } | null>(null);
   const [deleteCategoryConfirmId, setDeleteCategoryConfirmId] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const isMobile = useIsMobile();
   const folderLimit = isMobile ? 2 : 4;
-
   const getFolderCountInCategory = (categoryId: string) => {
     const sec = sections.categories.find(c => c.category.id === categoryId);
     return sec?.folders.length ?? 0;
@@ -354,7 +383,7 @@ export function Library({
   // TouchSensor primero para que en tablet/móvil se use touch (delay+tolerance); en desktop PointerSensor
   const sensors = useSensors(
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 250, tolerance: 8 },
+      activationConstraint: { delay: 200, tolerance: 10 },
     }),
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -425,7 +454,14 @@ export function Library({
   const handleDragStart = (event: DragStartEvent) => {
     const id = event.active.id;
     setDropTarget(null);
-    if (String(id).startsWith('folder-')) setActiveFolderId(String(id).replace('folder-', ''));
+    if (String(id).startsWith('folder-')) {
+      setActiveFolderId(String(id).replace('folder-', ''));
+      const activator = document.querySelector(`[data-id="${id}"]`);
+      const wrapper = activator?.parentElement?.parentElement ?? (activator as Element | null);
+      if (wrapper) setOverlayWidth((wrapper as Element).getBoundingClientRect().width);
+    } else {
+      setOverlayWidth(null);
+    }
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -585,8 +621,8 @@ export function Library({
         dropId={categoryId === undefined ? 'drop-uncategorized' : `drop-${categoryId}`}
         activeDragId={options?.activeDragId ?? null}
       >
-        {/* Mobile/tablet: una columna (100% por card); desktop: dos columnas (50% por card) */}
-        <div className="relative flex flex-col gap-3 lg:hidden">
+        {/* Mobile/tablet: una columna (100% por card); durante drag evitar que el scroll robe el gesto */}
+        <div className={cn('relative flex flex-col gap-3 lg:hidden', showSlotOverlay && 'touch-none')}>
           {list.slice(0, limit).map(folder =>
             String(folder.id) === String(activeFolderId) ? (
               <FolderSlotPlaceholder key={folder.id} showDragHandle={showFolderDragHandle} />
@@ -606,6 +642,8 @@ export function Library({
                 onProgressUpdate={onProgressUpdate}
                 getBookUrl={getBookUrl}
                 onReorderBooks={onReorderBooks}
+                onMoveBook={onMoveBook}
+                allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
               />
             )
@@ -633,8 +671,10 @@ export function Library({
                       onDeleteBook={onDeleteBook}
                       onProgressUpdate={onProgressUpdate}
                       getBookUrl={getBookUrl}
-                      onReorderBooks={onReorderBooks}
-                      onOpenCreateCategory={handleOpenCreateCategory}
+                onReorderBooks={onReorderBooks}
+                onMoveBook={onMoveBook}
+                allFolders={allFolders}
+                onOpenCreateCategory={handleOpenCreateCategory}
                     />
                   )
                 )}
@@ -653,7 +693,7 @@ export function Library({
             </div>
           )}
         </div>
-        <div className="relative hidden lg:block">
+        <div className={cn('relative hidden lg:block', showSlotOverlay && 'touch-none')}>
           <div className="grid grid-cols-2 gap-3">
 {list.slice(0, limit).map(folder =>
               String(folder.id) === String(activeFolderId) ? (
@@ -673,8 +713,10 @@ export function Library({
                   onDeleteBook={onDeleteBook}
                   onProgressUpdate={onProgressUpdate}
                   getBookUrl={getBookUrl}
-                  onReorderBooks={onReorderBooks}
-                  onOpenCreateCategory={handleOpenCreateCategory}
+                onReorderBooks={onReorderBooks}
+                onMoveBook={onMoveBook}
+                allFolders={allFolders}
+                onOpenCreateCategory={handleOpenCreateCategory}
                 />
               )
             )}
@@ -701,8 +743,10 @@ export function Library({
                         onDeleteBook={onDeleteBook}
                         onProgressUpdate={onProgressUpdate}
                         getBookUrl={getBookUrl}
-                        onReorderBooks={onReorderBooks}
-                        onOpenCreateCategory={handleOpenCreateCategory}
+                onReorderBooks={onReorderBooks}
+                onMoveBook={onMoveBook}
+                allFolders={allFolders}
+                onOpenCreateCategory={handleOpenCreateCategory}
                       />
                     )
                   )}
@@ -825,7 +869,7 @@ export function Library({
 
       <DndContext
         sensors={sensors}
-        collisionDetection={rectIntersection}
+        collisionDetection={closestCenter}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
@@ -900,8 +944,10 @@ export function Library({
                           onDeleteBook={onDeleteBook}
                           onProgressUpdate={onProgressUpdate}
                           getBookUrl={getBookUrl}
-                          onReorderBooks={onReorderBooks}
-                          onOpenCreateCategory={handleOpenCreateCategory}
+                onReorderBooks={onReorderBooks}
+                onMoveBook={onMoveBook}
+                allFolders={allFolders}
+                onOpenCreateCategory={handleOpenCreateCategory}
                         />
                       )
                     )}
@@ -923,9 +969,9 @@ export function Library({
           )}
         </SortableContext>
 
-        <DragOverlay dropAnimation={null}>
+        <DragOverlay dropAnimation={null} modifiers={[snapLeftHandleToCursor]}>
           {activeFolderId ? (
-            <div className="min-w-0 opacity-95 shadow-lg touch-none select-none flex items-start" style={{ touchAction: 'none' }}>
+            <div className="opacity-95 shadow-lg touch-none select-none flex items-start rounded-lg overflow-hidden border border-border bg-card shrink-0" style={{ touchAction: 'none', width: overlayWidth ?? undefined, minWidth: overlayWidth != null ? undefined : 280, maxWidth: overlayWidth != null ? undefined : 'min(400px, 90vw)' }}>
               {showFolderDragHandle && (
                 <div className="shrink-0 w-10 h-[102px] border-y border-l border-border border-r-0 rounded-l-lg rounded-r-none bg-muted/30 flex items-center justify-center" aria-hidden>
                   <GripVertical className="w-4 h-4 text-muted-foreground" />
@@ -945,6 +991,8 @@ export function Library({
                   onDeleteBook={onDeleteBook}
                   onProgressUpdate={onProgressUpdate}
                   getBookUrl={getBookUrl}
+                  onMoveBook={onMoveBook}
+                  allFolders={allFolders}
                   onOpenCreateCategory={handleOpenCreateCategory}
                 />
               </div>

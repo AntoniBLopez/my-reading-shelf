@@ -96,6 +96,7 @@ export function MainLayout() {
     reorderFolders,
     reorderCategories,
     reorderBooks,
+    moveBook,
     uploadBook,
     toggleBookRead,
     setBookState,
@@ -167,6 +168,7 @@ export function MainLayout() {
               onReorderFolders={reorderFolders}
               onReorderCategories={reorderCategories}
               onReorderBooks={reorderBooks}
+              onMoveBook={moveBook}
               onUploadBook={uploadBook}
               onToggleBookRead={toggleBookRead}
               onSetBookState={setBookState}

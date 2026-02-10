@@ -8,6 +8,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -27,7 +30,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileText, MoreVertical, Trash2, Check, Clock, Pencil, CheckCheck, BookMarked, GripVertical, RotateCcw } from 'lucide-react';
+import { FileText, MoreVertical, Trash2, Check, Clock, Pencil, CheckCheck, BookMarked, GripVertical, RotateCcw, FolderInput } from 'lucide-react';
 import PDFViewer from './PDFViewer';
 
 export interface BookCardProps {
@@ -40,9 +43,13 @@ export interface BookCardProps {
   onDelete: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
+  /** Mover libro a otra carpeta; si se pasa, se muestra la opción "Mover de carpeta" con la lista de carpetas */
+  onMoveToFolder?: (bookId: string, targetFolderId: string) => Promise<boolean>;
+  /** Lista de carpetas a las que se puede mover (ej. todas menos la actual); cada una { id, name } */
+  foldersForMove?: { id: string; name: string }[];
 }
 
-export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRename, onDelete, onProgressUpdate, getBookUrl }: BookCardProps) {
+export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRename, onDelete, onProgressUpdate, getBookUrl, onMoveToFolder, foldersForMove }: BookCardProps) {
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
@@ -172,6 +179,24 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
                 <Clock className="w-4 h-4 mr-2" />
                 Marcar como pendiente
               </DropdownMenuItem>
+              {onMoveToFolder && foldersForMove && foldersForMove.length > 0 && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <FolderInput className="w-4 h-4 mr-2" />
+                    Mover de carpeta
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {foldersForMove.map((f) => (
+                      <DropdownMenuItem
+                        key={f.id}
+                        onSelect={() => void onMoveToFolder(book.id, f.id)}
+                      >
+                        {f.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
               <DropdownMenuItem
                 onSelect={() => setTimeout(() => setIsDeleteConfirmOpen(true), 0)}
                 className="text-destructive focus:text-destructive"

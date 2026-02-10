@@ -159,14 +159,19 @@
   }
 }
 
-/* Bottom nav (mobile/tablet): no hover persistente en touch y efecto ripple */
+/* Bottom nav (mobile/tablet): no hover/focus persistente en touch; hover solo en desktop */
 .bottom-nav button {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
+/* En touch: quitar cualquier bg/focus que quede pegado al pulsar (hay que pulsar fuera para quitar) */
 @media (hover: none) {
-  .bottom-nav button:hover:not(.bg-primary\/10) {
+  .bottom-nav button:hover:not(.bg-primary\/10),
+  .bottom-nav button:focus:not(.bg-primary\/10),
+  .bottom-nav button:focus-visible:not(.bg-primary\/10) {
     background-color: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
   }
 }
 @keyframes bottom-nav-ripple {
