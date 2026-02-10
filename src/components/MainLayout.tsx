@@ -189,7 +189,7 @@ export function MainLayout() {
       >
         <BottomNavButton
           className={cn(
-            'flex flex-col items-center justify-center gap-0.5 py-0 px-4 rounded-none min-w-0 flex-1 min-h-[52px] text-muted-foreground',
+            'flex flex-col items-center justify-center gap-0.5 py-0 px-4 rounded-none min-w-0 flex-1 min-h-[58px] text-muted-foreground',
             currentView === 'dashboard' && 'text-primary bg-primary/10'
           )}
           onClick={() => setCurrentView('dashboard')}
@@ -199,7 +199,7 @@ export function MainLayout() {
         </BottomNavButton>
         <BottomNavButton
           className={cn(
-            'flex flex-col items-center justify-center gap-0.5 py-0 px-4 rounded-none min-w-0 flex-1 min-h-[52px] text-muted-foreground',
+            'flex flex-col items-center justify-center gap-0.5 py-0 px-4 rounded-none min-w-0 flex-1 min-h-[58px] text-muted-foreground',
             currentView === 'library' && 'text-primary bg-primary/10'
           )}
           onClick={() => setCurrentView('library')}
@@ -210,7 +210,7 @@ export function MainLayout() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <BottomNavButton
-              className="flex flex-col items-center justify-center gap-0.5 py-0 px-4 rounded-none min-w-0 flex-1 min-h-[52px] text-muted-foreground"
+              className="flex flex-col items-center justify-center gap-0.5 py-0 px-4 rounded-none min-w-0 flex-1 min-h-[58px] text-muted-foreground"
               aria-label="Menú"
             >
               <Menu className="w-5 h-5 shrink-0" />

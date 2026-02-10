@@ -111,7 +111,7 @@ export function Sidebar({ currentView, onViewChange, onNavigate, collapsed = fal
               </div>
               <div>
                 <h1 className="font-serif font-semibold text-lg text-sidebar-foreground">
-                  My Reading Shell
+                  My Reading Shelf
                 </h1>
                 <p className="text-xs text-muted-foreground">Tu espacio de lectura</p>
               </div>

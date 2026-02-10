@@ -50,7 +50,11 @@ import {
   Loader2,
   X,
   Tag,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { ExpandMoreButton } from './ExpandMoreButton';
 import { BookCard } from './BookCard';
 
 interface FolderCardProps {
@@ -128,6 +132,7 @@ export function FolderCard({
   onOpenCreateCategory,
 }: FolderCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [booksExpanded, setBooksExpanded] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -136,6 +141,13 @@ export function FolderCard({
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+
+  const isMobile = useIsMobile();
+  const bookLimit = isMobile ? 2 : 4;
+  const showBooksCollapse = books.length > bookLimit;
+  const initialBooks = books.slice(0, bookLimit);
+  const restBooks = books.slice(bookLimit);
+  const hiddenBookCount = restBooks.length;
 
   const readCount = books.filter(b => b.is_read).length;
   const totalCount = books.length;
@@ -349,7 +361,7 @@ export function FolderCard({
                     items={books.map(b => `book-${b.id}`)}
                     strategy={verticalListSortingStrategy}
                   >
-                    {books.map((book) => (
+                    {initialBooks.map((book) => (
                       <SortableBookCard
                         key={book.id}
                         book={book}
@@ -362,21 +374,83 @@ export function FolderCard({
                         getBookUrl={getBookUrl}
                       />
                     ))}
+                    {showBooksCollapse && (
+                      <div
+                        className={`expandable-section expandable-section--instant ${booksExpanded ? 'expandable-section--open' : 'expandable-section--closed'}`}
+                      >
+                        <div className="space-y-2">
+                          {restBooks.map((book) => (
+                            <SortableBookCard
+                              key={book.id}
+                              book={book}
+                              showDragHandle={books.length > 1}
+                              onToggleBookRead={onToggleBookRead}
+                              onSetBookState={onSetBookState}
+                              onRenameBook={onRenameBook}
+                              onDeleteBook={onDeleteBook}
+                              onProgressUpdate={onProgressUpdate}
+                              getBookUrl={getBookUrl}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </SortableContext>
                 </DndContext>
               ) : (
-                books.map((book) => (
-                  <BookCard
-                    key={book.id}
-                    book={book}
-                    onToggleRead={onToggleBookRead}
-                    onSetState={onSetBookState}
-                    onRename={onRenameBook}
-                    onDelete={onDeleteBook}
-                    onProgressUpdate={onProgressUpdate}
-                    getBookUrl={getBookUrl}
-                  />
-                ))
+                <>
+                  {initialBooks.map((book) => (
+                    <BookCard
+                      key={book.id}
+                      book={book}
+                      onToggleRead={onToggleBookRead}
+                      onSetState={onSetBookState}
+                      onRename={onRenameBook}
+                      onDelete={onDeleteBook}
+                      onProgressUpdate={onProgressUpdate}
+                      getBookUrl={getBookUrl}
+                    />
+                  ))}
+                  {showBooksCollapse && (
+                    <div
+                      className={`expandable-section expandable-section--instant ${booksExpanded ? 'expandable-section--open' : 'expandable-section--closed'}`}
+                    >
+                      <div className="space-y-2">
+                        {restBooks.map((book) => (
+                          <BookCard
+                            key={book.id}
+                            book={book}
+                            onToggleRead={onToggleBookRead}
+                            onSetState={onSetBookState}
+                            onRename={onRenameBook}
+                            onDelete={onDeleteBook}
+                            onProgressUpdate={onProgressUpdate}
+                            getBookUrl={getBookUrl}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {showBooksCollapse && (
+                <div className="flex justify-center pt-1">
+                  <ExpandMoreButton
+                    onClick={() => setBooksExpanded(!booksExpanded)}
+                  >
+                    {booksExpanded ? (
+                      <>
+                        <ChevronUp className="w-4 h-4" />
+                        Minimizar
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-4 h-4" />
+                        Mostrar más{hiddenBookCount > 0 ? ` (${hiddenBookCount} más)` : ''}
+                      </>
+                    )}
+                  </ExpandMoreButton>
+                </div>
               )}
             </div>
           ) : (

@@ -191,6 +191,34 @@
   animation: bottom-nav-ripple 0.6s ease-out forwards;
 }
 
+/* Mostrar más / Minimizar: ripple en táctil y sin hover en tablet/mobile (solo hover con mouse) */
+.expand-more-btn {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+@media (hover: none) {
+  .expand-more-btn:hover {
+    background-color: transparent !important;
+    color: hsl(var(--muted-foreground)) !important;
+  }
+}
+
+/* Mostrar más / Minimizar: apertura y cierre suave */
+.expandable-section {
+  overflow: hidden;
+  transition: max-height 0.35s ease-out;
+}
+/* Libros dentro de carpeta: cierre instantáneo sin animación */
+.expandable-section.expandable-section--instant {
+  transition: none;
+}
+.expandable-section.expandable-section--closed {
+  max-height: 0;
+}
+.expandable-section.expandable-section--open {
+  max-height: 2000px;
+}
+
 /* PDF viewer dark mode: contenedor de la página (barra abajo con zoom bajo). No tocar canvas ni capas para que se vea el contenido invertido. */
 .pdf-viewer-dark,
 .pdf-viewer-dark .react-pdf__Document,

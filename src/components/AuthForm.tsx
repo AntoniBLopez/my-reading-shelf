@@ -92,7 +92,7 @@ export function AuthForm() {
             <BookOpen className="w-8 h-8 text-primary-foreground" />
           </div>
           <div>
-            <CardTitle className="text-3xl font-serif">My Reading Shell</CardTitle>
+            <CardTitle className="text-3xl font-serif">My Reading Shelf</CardTitle>
             <CardDescription className="text-base mt-2">
               {forgotPassword
                 ? 'Te enviaremos un enlace para restablecer tu contraseña'

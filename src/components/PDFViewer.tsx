@@ -62,12 +62,17 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const [error, setError] = useState<string | null>(null);
   const [pageWidth, setPageWidth] = useState<number>(600);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenHeaderVisible, setFullscreenHeaderVisible] = useState(true);
+  const [showFullscreenHint, setShowFullscreenHint] = useState(false);
+  const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
   // Freeze theme when dialog opens so parent re-renders (e.g. after page change) don't cause light/dark flicker
   const [viewerDarkMode, setViewerDarkMode] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; scale: number; distance: number } | null>(null);
+  const lastTapTimeRef = useRef<number>(0);
+  const fullscreenHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scaleRef = useRef<number>(0.7);
   const pinchRafRef = useRef<number | null>(null);
   const pendingScaleRef = useRef<number | null>(null);
@@ -79,6 +84,37 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const resizeRafRef = useRef<number | null>(null);
 
   scaleRef.current = scale;
+
+  useEffect(() => {
+    const mq = typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)') : null;
+    if (!mq) return;
+    const onChange = () => setIsMobileOrTablet(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (isFullscreen && isMobileOrTablet) {
+      setFullscreenHeaderVisible(true);
+      setShowFullscreenHint(true);
+      if (fullscreenHintTimeoutRef.current) clearTimeout(fullscreenHintTimeoutRef.current);
+      fullscreenHintTimeoutRef.current = setTimeout(() => {
+        setShowFullscreenHint(false);
+        fullscreenHintTimeoutRef.current = null;
+      }, 3000);
+    } else {
+      setShowFullscreenHint(false);
+      if (fullscreenHintTimeoutRef.current) {
+        clearTimeout(fullscreenHintTimeoutRef.current);
+        fullscreenHintTimeoutRef.current = null;
+      }
+      if (!isFullscreen) setFullscreenHeaderVisible(true);
+    }
+    return () => {
+      if (fullscreenHintTimeoutRef.current) clearTimeout(fullscreenHintTimeoutRef.current);
+    };
+  }, [isFullscreen, isMobileOrTablet]);
 
   // Reset URL when dialog closes so next open shows loading for the (possibly new) book
   useEffect(() => {
@@ -303,9 +339,18 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         const end = e.changedTouches[0];
         const dx = end.clientX - start.x;
         const dy = end.clientY - start.y;
-        if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+        const isHorizontalSwipe = Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy);
+        if (isHorizontalSwipe) {
           if (dx < 0) goToPage(pageNumber + 1);
           else goToPage(pageNumber - 1);
+        } else if (isFullscreen) {
+          const now = Date.now();
+          if (now - lastTapTimeRef.current < 400) {
+            lastTapTimeRef.current = 0;
+            setFullscreenHeaderVisible(v => !v);
+          } else {
+            lastTapTimeRef.current = now;
+          }
         }
       }
     } else if (e.touches.length === 2) {
@@ -317,7 +362,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         distance: dist > 0 ? dist : 1,
       };
     }
-  }, [goToPage, pageNumber]);
+  }, [goToPage, pageNumber, isFullscreen]);
 
   // Navegación con flechas del teclado
   useEffect(() => {
@@ -366,6 +411,8 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
     const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => Promise<void> };
     const elAny = el as HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> };
     const inNativeFullscreen = !!(document.fullscreenElement ?? doc.webkitFullscreenElement);
+    // En tablet/mobile no usar la Fullscreen API para evitar el gesto nativo "swipe down to exit" al hacer scroll
+    const isMobileOrTablet = typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
 
     if (inNativeFullscreen || isFullscreen) {
       if (inNativeFullscreen) {
@@ -375,6 +422,11 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         } catch { /* ignore */ }
       }
       setIsFullscreen(false);
+      return;
+    }
+
+    if (isMobileOrTablet) {
+      setIsFullscreen(true);
       return;
     }
 
@@ -438,8 +490,16 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         )}
 
         {/* Área de pantalla completa: toolbar + contenido (zoom y páginas disponibles en fullscreen) */}
-        <div ref={fullscreenRef} className="flex-1 flex flex-col min-h-0 min-w-0">
-          {/* Toolbar: responsive — wraps to 2 rows on small screens so all controls fit */}
+        <div ref={fullscreenRef} className="flex-1 flex flex-col min-h-0 min-w-0 relative">
+          {isFullscreen && showFullscreenHint && isMobileOrTablet && (
+            <div className="absolute top-0 left-0 right-0 z-10 flex justify-center pt-3 pb-2 px-4 pointer-events-none">
+              <p className="text-xs sm:text-sm text-center text-foreground/90 bg-background/95 backdrop-blur rounded-lg px-3 py-2 shadow-md border border-border/50">
+                Haz doble toque para ocultar/mostrar la barra
+              </p>
+            </div>
+          )}
+          {/* Toolbar: responsive — wraps to 2 rows on small screens so all controls fit; en fullscreen se puede ocultar con doble toque en tablet/móvil */}
+          {(!isFullscreen || fullscreenHeaderVisible) && (
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 px-2 sm:px-4 py-2 border-b bg-background shrink-0 min-w-0">
             {/* Pagination */}
             <div className="flex items-center gap-1 sm:gap-2 min-w-0 shrink-0">
@@ -539,12 +599,13 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               </Button>
             </div>
           </div>
+          )}
 
           {/* PDF Content */}
           <div className={`relative flex-1 overflow-auto min-w-0 flex flex-col ${viewerDarkMode ? 'bg-neutral-900' : 'bg-muted/30'}`}>
             <div
               ref={containerRef}
-              className={`flex-1 overflow-auto flex items-start justify-center p-4 min-w-0 touch-manipulation ${viewerDarkMode ? 'bg-black' : ''}`}
+              className={`relative flex-1 overflow-auto flex items-start justify-center p-4 min-w-0 touch-manipulation ${viewerDarkMode ? 'bg-black' : ''}`}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -557,7 +618,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               }}
             >
               {loading && (
-                <div className={`flex flex-col items-center justify-center h-full min-h-[200px] gap-3 w-full ${viewerDarkMode ? 'bg-black text-neutral-200' : ''}`}>
+                <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 ${viewerDarkMode ? 'bg-black text-neutral-200' : 'bg-muted/30'}`}>
                   <Loader2 className={`w-8 h-8 animate-spin ${viewerDarkMode ? 'text-neutral-300' : 'text-primary'}`} />
                   <p className={viewerDarkMode ? 'text-neutral-400' : 'text-muted-foreground'}>Cargando PDF...</p>
                 </div>

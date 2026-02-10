@@ -90,12 +90,12 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
         >
           <div
             className={`p-2 rounded-lg shrink-0 ${
-              state === 'Leído' ? 'bg-success/10' : state === 'En progreso' ? 'bg-primary/10' : 'bg-accent/20'
+              state === 'Leído' ? 'bg-success/10' : state === 'En progreso' ? 'bg-primary/10' : 'bg-muted'
             }`}
           >
             <FileText
               className={`w-4 h-4 ${
-                state === 'Leído' ? 'text-success' : state === 'En progreso' ? 'text-primary' : 'text-accent'
+                state === 'Leído' ? 'text-success' : state === 'En progreso' ? 'text-primary' : 'text-muted-foreground'
               }`}
             />
           </div>

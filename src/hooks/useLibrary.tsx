@@ -545,11 +545,14 @@ export function useLibrary() {
     const categoryOrder = layout.categoryOrder;
     // Con Supabase usamos solo la BD como fuente de verdad (category_id y position) para evitar que localStorage rompa la consistencia entre dispositivos
     const withLayout = isLocal
-      ? folders.map(f => ({
-          ...f,
-          category_id: folderPositions[f.id]?.categoryId ?? f.category_id ?? null,
-          position: folderPositions[f.id]?.position ?? f.position ?? 999,
-        }))
+      ? folders.map(f => {
+          const key = String(f.id);
+          return {
+            ...f,
+            category_id: folderPositions[key]?.categoryId ?? f.category_id ?? null,
+            position: folderPositions[key]?.position ?? f.position ?? 999,
+          };
+        })
       : folders.map(f => ({
           ...f,
           category_id: f.category_id ?? null,
@@ -694,23 +697,24 @@ export function useLibrary() {
   };
 
   const reorderFolders = (folderId: string, targetCategoryId: string | null, targetIndex: number) => {
-    const folder = folders.find(f => f.id === folderId);
+    const folderIdStr = String(folderId);
+    const folder = folders.find(f => String(f.id) === folderIdStr);
     if (!folder) return;
     const { uncategorized, categories: catsWithFolders } = getOrderedSections();
     const newPositions = { ...layout.folderPositions };
 
     const targetFolderIds =
       targetCategoryId === null
-        ? uncategorized.map(f => f.id).filter(id => id !== folderId)
-        : (catsWithFolders.find(c => c.category.id === targetCategoryId)?.folders ?? []).map(f => f.id).filter(id => id !== folderId);
-    const inserted = [...targetFolderIds.slice(0, targetIndex), folderId, ...targetFolderIds.slice(targetIndex)];
+        ? uncategorized.map(f => String(f.id)).filter(id => id !== folderIdStr)
+        : (catsWithFolders.find(c => c.category.id === targetCategoryId)?.folders ?? []).map(f => String(f.id)).filter(id => id !== folderIdStr);
+    const inserted = [...targetFolderIds.slice(0, targetIndex), folderIdStr, ...targetFolderIds.slice(targetIndex)];
     inserted.forEach((id, pos) => {
       newPositions[id] = { categoryId: targetCategoryId, position: pos };
     });
 
-    const sourceUncategorized = uncategorized.filter(f => f.id !== folderId);
+    const sourceUncategorized = uncategorized.filter(f => String(f.id) !== folderIdStr);
     sourceUncategorized.forEach((f, pos) => {
-      newPositions[f.id] = { categoryId: null, position: pos };
+      newPositions[String(f.id)] = { categoryId: null, position: pos };
     });
 
     catsWithFolders.forEach(({ category, folders: catFolders }) => {
@@ -719,9 +723,9 @@ export function useLibrary() {
           newPositions[id] = { categoryId: category.id, position: pos };
         });
       } else {
-        const inCat = catFolders.filter(f => f.id !== folderId);
+        const inCat = catFolders.filter(f => String(f.id) !== folderIdStr);
         inCat.forEach((f, pos) => {
-          newPositions[f.id] = { categoryId: category.id, position: pos };
+          newPositions[String(f.id)] = { categoryId: category.id, position: pos };
         });
       }
     });
@@ -730,7 +734,7 @@ export function useLibrary() {
     if (!isLocal) {
       setFolders(prev =>
         prev.map(f => {
-          const p = newPositions[f.id];
+          const p = newPositions[String(f.id)];
           if (!p) return f;
           return { ...f, category_id: p.categoryId, position: p.position };
         })
