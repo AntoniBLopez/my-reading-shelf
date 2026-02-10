@@ -69,6 +69,7 @@ export type Database = {
       }
       folders: {
         Row: {
+          category_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -77,6 +78,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          category_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -85,6 +87,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          category_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -92,7 +95,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "folders_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "folder_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       folder_categories: {
         Row: {

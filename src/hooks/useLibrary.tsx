@@ -625,6 +625,15 @@ export function useLibrary() {
 
   const deleteCategory = async (id: string) => {
     if (!isLocal && supabase) {
+      const { error: updateError } = await supabase
+        .from('folders')
+        .update({ category_id: null })
+        .eq('category_id', id);
+      if (updateError) {
+        toast.error('Error al actualizar carpetas');
+        console.error(updateError);
+        return false;
+      }
       const { error } = await supabase.from('folder_categories').delete().eq('id', id);
       if (error) {
         toast.error('Error al eliminar categoría');
@@ -708,6 +717,19 @@ export function useLibrary() {
       }
     });
     persistLayout({ ...layout, folderPositions: newPositions });
+
+    if (!isLocal && supabase) {
+      supabase
+        .from('folders')
+        .update({ category_id: targetCategoryId })
+        .eq('id', folderId)
+        .then(({ error }) => {
+          if (error) {
+            toast.error('Error al guardar la categoría de la carpeta');
+            console.error(error);
+          }
+        });
+    }
   };
 
   const reorderCategories = async (categoryIds: string[]) => {
