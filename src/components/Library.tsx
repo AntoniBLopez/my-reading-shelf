@@ -23,9 +23,10 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
-  rectIntersection,
+  pointerWithin,
   useDroppable,
 } from '@dnd-kit/core';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
@@ -179,7 +180,7 @@ function SectionDropZone({
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-[84px] rounded-xl transition-colors ${showDropHighlight ? 'bg-primary/10 ring-2 ring-primary/30' : ''}`}
+      className={`min-h-[84px] rounded-xl transition-colors duration-150 ${showDropHighlight ? 'bg-primary/15 ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
     >
       {children}
     </div>
@@ -661,7 +662,7 @@ export function Library({
 
       <DndContext
         sensors={sensors}
-        collisionDetection={rectIntersection}
+        collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
@@ -735,7 +736,7 @@ export function Library({
           )}
         </SortableContext>
 
-        <DragOverlay dropAnimation={null}>
+        <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
           {activeFolderId ? (
             <div className="opacity-90 shadow-lg touch-none select-none" style={{ touchAction: 'none' }}>
               <FolderCard
