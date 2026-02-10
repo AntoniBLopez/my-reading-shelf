@@ -492,7 +492,29 @@ export function Library({
         dropId={categoryId === undefined ? 'drop-uncategorized' : `drop-${categoryId}`}
         activeDragId={options?.activeDragId ?? null}
       >
-        <div className="flex flex-col md:flex-row gap-3">
+        {/* Mobile/tablet: una columna (100% por card); desktop: dos columnas (50% por card) */}
+        <div className="flex flex-col gap-3 lg:hidden">
+          {displayedFolders.map(folder => (
+            <SortableFolderCard
+              key={folder.id}
+              folder={folder}
+              books={getBooksByFolder(folder.id)}
+              showDragHandle={showFolderDragHandle}
+              onUpdate={onUpdateFolder}
+              onDelete={onDeleteFolder}
+              onUploadBook={onUploadBook}
+              onToggleBookRead={onToggleBookRead}
+              onSetBookState={onSetBookState}
+              onRenameBook={onRenameBook}
+              onDeleteBook={onDeleteBook}
+              onProgressUpdate={onProgressUpdate}
+              getBookUrl={getBookUrl}
+              onReorderBooks={onReorderBooks}
+              onOpenCreateCategory={handleOpenCreateCategory}
+            />
+          ))}
+        </div>
+        <div className="hidden lg:flex lg:flex-row gap-3">
           {[0, 1].map(col => (
             <div key={col} className="flex flex-col gap-3 flex-1 min-w-0">
               {displayedFolders

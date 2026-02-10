@@ -48,38 +48,38 @@ export function Dashboard({ stats }: DashboardProps) {
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 md:space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-serif font-semibold">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Resumen de tu biblioteca personal</p>
+        <h1 className="text-2xl md:text-3xl font-serif font-semibold">Dashboard</h1>
+        <p className="text-sm md:text-base text-muted-foreground mt-1">Resumen de tu biblioteca personal</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
         {statCards.map((stat) => (
           <Card key={stat.title} className="shadow-card hover:shadow-hover transition-shadow duration-300">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 md:p-6 md:pb-2">
+              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground leading-tight">
                 {stat.title}
               </CardTitle>
-              <div className={`p-2 rounded-lg ${stat.bgColor}`}>
-                <stat.icon className={`w-4 h-4 ${stat.color}`} />
+              <div className={`p-1.5 md:p-2 rounded-lg shrink-0 ${stat.bgColor}`}>
+                <stat.icon className={`w-3.5 h-3.5 md:w-4 md:h-4 ${stat.color}`} />
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-serif font-bold">{stat.value}</div>
+            <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+              <div className="text-xl md:text-3xl font-serif font-bold">{stat.value}</div>
             </CardContent>
           </Card>
         ))}
       </div>
 
       <Card className="shadow-card">
-        <CardHeader>
+        <CardHeader className="p-4 md:p-6">
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-primary" />
-            <CardTitle className="font-serif">Progreso de Lectura</CardTitle>
+            <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-primary shrink-0" />
+            <CardTitle className="font-serif text-lg md:text-2xl">Progreso de Lectura</CardTitle>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 p-4 pt-0 md:p-6 md:pt-0">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Libros leídos</span>
             <span className="font-medium">{readPercentage}%</span>

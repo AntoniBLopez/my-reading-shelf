@@ -3,9 +3,19 @@ import { Sidebar } from './Sidebar';
 import { Dashboard } from './Dashboard';
 import { Library } from './Library';
 import { useLibrary } from '@/hooks/useLibrary';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from 'next-themes';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { Loader2, MoreVertical } from 'lucide-react';
+import { Loader2, LayoutDashboard, Library as LibraryIcon, Menu, User, Sun, Moon, LogOut } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type View = 'dashboard' | 'library';
 
@@ -34,7 +44,9 @@ export function MainLayout() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, signOut, isLocalOnly } = useAuth();
+  const { theme, setTheme } = useTheme();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
     folders,
     books,
@@ -74,38 +86,23 @@ export function MainLayout() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-background md:flex-row">
-      {/* Header móvil: solo visible en pantallas pequeñas */}
-      <header className="flex md:hidden items-center justify-between gap-4 px-4 py-3 border-b border-border bg-background shrink-0">
-        <h1 className="font-serif font-semibold text-lg text-foreground truncate">My Reading Shell</h1>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0"
-          onClick={() => setMobileMenuOpen(true)}
-          aria-label="Abrir menú"
-        >
-          <MoreVertical className="w-5 h-5" />
-        </Button>
-      </header>
-
-      {/* Sheet menú móvil */}
-      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="p-0 w-64 max-w-[85vw]">
-          <Sidebar
-            currentView={currentView}
-            onViewChange={setCurrentView}
-            onNavigate={() => setMobileMenuOpen(false)}
-          />
-        </SheetContent>
-      </Sheet>
-
-      {/* Sidebar desktop: oculto en móvil */}
-      <aside className="hidden md:flex md:w-64 md:shrink-0 md:h-screen md:sticky md:top-0 border-r border-sidebar-border">
-        <Sidebar currentView={currentView} onViewChange={setCurrentView} />
+    <div className="flex flex-col min-h-screen bg-background lg:flex-row">
+      {/* Sidebar desktop (lg+): colapsable; móvil/tablet usan bottom nav */}
+      <aside
+        className={cn(
+          'hidden lg:flex lg:shrink-0 lg:h-screen lg:sticky lg:top-0 border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out',
+          sidebarCollapsed ? 'lg:w-14' : 'lg:w-64'
+        )}
+      >
+        <Sidebar
+          currentView={currentView}
+          onViewChange={setCurrentView}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(c => !c)}
+        />
       </aside>
 
-      <main className="flex-1 p-4 md:p-8 overflow-auto min-w-0">
+      <main className={cn('flex-1 p-4 lg:p-8 overflow-auto min-w-0', 'pb-20 lg:pb-8')}>
         <div className="max-w-5xl mx-auto">
           {currentView === 'dashboard' ? (
             <Dashboard stats={stats} />
@@ -137,6 +134,79 @@ export function MainLayout() {
           )}
         </div>
       </main>
+
+      {/* Bottom nav: solo en móvil/tablet (estilo app nativa) */}
+      <nav
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-border bg-background/95 backdrop-blur pt-2"
+        style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+      >
+        <Button
+          variant="ghost"
+          className={cn(
+            'flex flex-col items-center gap-0.5 py-3 px-4 rounded-none min-w-0 flex-1 h-auto text-muted-foreground',
+            currentView === 'dashboard' && 'text-primary bg-primary/10'
+          )}
+          onClick={() => setCurrentView('dashboard')}
+        >
+          <LayoutDashboard className="w-5 h-5 shrink-0" />
+          <span className="text-xs">Inicio</span>
+        </Button>
+        <Button
+          variant="ghost"
+          className={cn(
+            'flex flex-col items-center gap-0.5 py-3 px-4 rounded-none min-w-0 flex-1 h-auto text-muted-foreground',
+            currentView === 'library' && 'text-primary bg-primary/10'
+          )}
+          onClick={() => setCurrentView('library')}
+        >
+          <LibraryIcon className="w-5 h-5 shrink-0" />
+          <span className="text-xs">Biblioteca</span>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              className="flex flex-col items-center gap-0.5 py-3 px-4 rounded-none min-w-0 flex-1 h-auto text-muted-foreground"
+              aria-label="Menú"
+            >
+              <Menu className="w-5 h-5 shrink-0" />
+              <span className="text-xs">Menú</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="center" className="mb-2 w-56">
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {isLocalOnly ? 'Modo local' : user?.email?.split('@')[0]}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {isLocalOnly ? 'Solo en este dispositivo' : user?.email}
+                  </p>
+                </div>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+              {theme === 'dark' ? <Sun className="w-4 h-4 mr-2" /> : <Moon className="w-4 h-4 mr-2" />}
+              {theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+            </DropdownMenuItem>
+            {!isLocalOnly && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => signOut()}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Cerrar sesión
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </nav>
     </div>
   );
 }

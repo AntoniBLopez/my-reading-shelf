@@ -85,7 +85,7 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
           </div>
         )}
         <div
-          className="flex items-center gap-3 p-3 flex-1 min-w-0 group cursor-pointer"
+          className="flex items-start gap-3 p-3 flex-1 min-w-0 group cursor-pointer"
           onClick={() => setIsViewerOpen(true)}
         >
           <div
@@ -121,28 +121,29 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
               <span className="text-xs text-muted-foreground">{book.file_name}</span>
             )}
           </div>
+          <div className="flex items-center gap-1.5 mt-1.5">
+            {state === 'Leído' && (
+              <Badge variant="outline" className="gap-1 border-success/30 text-success text-xs w-fit">
+                <Check className="w-3 h-3" />
+                Leído
+              </Badge>
+            )}
+            {state === 'En progreso' && (
+              <Badge variant="outline" className="gap-1 border-primary/30 text-primary text-xs w-fit">
+                <BookMarked className="w-3 h-3" />
+                En progreso
+              </Badge>
+            )}
+            {state === 'Pendiente' && (
+              <Badge variant="outline" className="gap-1 text-xs w-fit">
+                <Clock className="w-3 h-3" />
+                Pendiente
+              </Badge>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-          {state === 'Leído' && (
-            <Badge variant="outline" className="gap-1 border-success/30 text-success text-xs">
-              <Check className="w-3 h-3" />
-              Leído
-            </Badge>
-          )}
-          {state === 'En progreso' && (
-            <Badge variant="outline" className="gap-1 border-primary/30 text-primary text-xs">
-              <BookMarked className="w-3 h-3" />
-              En progreso
-            </Badge>
-          )}
-          {state === 'Pendiente' && (
-            <Badge variant="outline" className="gap-1 text-xs">
-              <Clock className="w-3 h-3" />
-              Pendiente
-            </Badge>
-          )}
-
+        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8">

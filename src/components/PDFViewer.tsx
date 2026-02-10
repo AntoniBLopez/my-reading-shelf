@@ -24,6 +24,7 @@ import {
   Moon,
   Sun,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import 'react-pdf/src/Page/AnnotationLayer.css';
 import 'react-pdf/src/Page/TextLayer.css';
 
@@ -317,21 +318,33 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
     if (!el) return;
     const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => Promise<void> };
     const elAny = el as HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> };
+    const inNativeFullscreen = !!(document.fullscreenElement ?? doc.webkitFullscreenElement);
+
+    if (inNativeFullscreen || isFullscreen) {
+      if (inNativeFullscreen) {
+        try {
+          if (document.exitFullscreen) await document.exitFullscreen();
+          else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
+        } catch { /* ignore */ }
+      }
+      setIsFullscreen(false);
+      return;
+    }
+
     try {
-      if (document.fullscreenElement ?? doc.webkitFullscreenElement) {
-        if (document.exitFullscreen) await document.exitFullscreen();
-        else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
-        setIsFullscreen(false);
+      if (el.requestFullscreen) {
+        await el.requestFullscreen();
+        setIsFullscreen(true);
+      } else if (elAny.webkitRequestFullscreen) {
+        await elAny.webkitRequestFullscreen();
+        setIsFullscreen(true);
       } else {
-        if (el.requestFullscreen) await el.requestFullscreen();
-        else if (elAny.webkitRequestFullscreen) await elAny.webkitRequestFullscreen();
-        else return;
         setIsFullscreen(true);
       }
     } catch {
-      setIsFullscreen(false);
+      setIsFullscreen(true);
     }
-  }, []);
+  }, [isFullscreen]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -348,7 +361,16 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0" hideCloseButton>
+      <DialogContent
+        className={cn(
+          'flex flex-col p-0',
+          isFullscreen
+            ? 'fixed inset-0 w-[100vw] h-[100dvh] max-w-none rounded-none z-[100] border-0'
+            : 'max-w-4xl h-[90vh]'
+        )}
+        hideCloseButton
+      >
+        {!isFullscreen && (
         <DialogHeader className="px-4 py-3 border-b bg-muted/50">
           <div className="flex items-center justify-between">
             <DialogTitle className="font-serif flex items-center gap-2">
@@ -366,6 +388,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
             <span className="text-sm font-medium text-primary">{progressPercent}%</span>
           </div>
         </DialogHeader>
+        )}
 
         {/* Área de pantalla completa: toolbar + contenido (zoom y páginas disponibles en fullscreen) */}
         <div ref={fullscreenRef} className="flex-1 flex flex-col min-h-0 min-w-0">
@@ -540,7 +563,8 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
           </div>
         </div>
 
-        {/* Footer with page info */}
+        {/* Footer with page info — hidden in fullscreen to maximize PDF area */}
+        {!isFullscreen && (
         <div className="px-4 py-2 border-t bg-muted/50 text-center text-sm text-muted-foreground">
           {pageNumber === numPages && numPages > 0 ? (
             <span className="text-success font-medium">🎉 ¡Has llegado al final!</span>
@@ -548,6 +572,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
             <span>Te quedan {numPages - pageNumber} páginas</span>
           )}
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

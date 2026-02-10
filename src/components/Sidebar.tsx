@@ -9,7 +9,10 @@ import {
   User,
   Sun,
   Moon,
+  PanelLeftClose,
+  PanelRightOpen,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type View = 'dashboard' | 'library';
 
@@ -18,9 +21,12 @@ interface SidebarProps {
   onViewChange: (view: View) => void;
   /** Llamado al navegar (p. ej. para cerrar el sheet en móvil) */
   onNavigate?: () => void;
+  /** Solo desktop: sidebar colapsado (solo se ve el botón para abrir) */
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export function Sidebar({ currentView, onViewChange, onNavigate }: SidebarProps) {
+export function Sidebar({ currentView, onViewChange, onNavigate, collapsed = false, onToggleCollapse }: SidebarProps) {
   const { user, signOut, isLocalOnly } = useAuth();
   const { theme, setTheme } = useTheme();
 
@@ -103,6 +109,8 @@ export function Sidebar({ currentView, onViewChange, onNavigate }: SidebarProps)
           </Button>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }
