@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { Loader2, LayoutDashboard, Library as LibraryIcon, Menu, User, Sun, Moon, LogOut } from 'lucide-react';
+import { Loader2, LayoutDashboard, Library as LibraryIcon, Menu, User, Sun, Moon, LogOut, PanelLeftClose, PanelRightOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type View = 'dashboard' | 'library';
@@ -72,6 +72,7 @@ export function MainLayout() {
     getBooksByFolder,
     updateBookProgress,
     getBookUrl,
+    refreshData,
   } = useLibrary();
 
   if (loading) {
@@ -102,7 +103,19 @@ export function MainLayout() {
         />
       </aside>
 
-      <main className={cn('flex-1 p-4 lg:p-8 overflow-auto min-w-0', 'pb-20 lg:pb-8')}>
+      {/* Botón fuera del sidenav: arriba a la izquierda del área de contenido (solo desktop) */}
+      <div className="flex-1 relative min-w-0 flex flex-col">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setSidebarCollapsed(c => !c)}
+          className="hidden lg:flex absolute top-0 left-0 z-20 h-9 w-9 rounded-l-none rounded-r-lg border border-l-0 border-sidebar-border bg-sidebar text-sidebar-foreground hover:bg-sidebar-accent shadow-sm"
+          title={sidebarCollapsed ? 'Abrir menú' : 'Minimizar menú'}
+          aria-label={sidebarCollapsed ? 'Abrir menú' : 'Minimizar menú'}
+        >
+          {sidebarCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+        </Button>
+        <main className={cn('flex-1 p-4 lg:pl-14 lg:pr-8 lg:pt-8 overflow-auto min-w-0', 'pb-20 lg:pb-8')}>
         <div className="max-w-5xl mx-auto">
           {currentView === 'dashboard' ? (
             <Dashboard stats={stats} />
@@ -130,10 +143,12 @@ export function MainLayout() {
               onProgressUpdate={updateBookProgress}
               getBooksByFolder={getBooksByFolder}
               getBookUrl={getBookUrl}
+              onRefresh={async () => { await refreshData(); }}
             />
           )}
         </div>
-      </main>
+        </main>
+      </div>
 
       {/* Bottom nav: solo en móvil/tablet (estilo app nativa) */}
       <nav

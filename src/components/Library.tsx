@@ -12,6 +12,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
 } from 'lucide-react';
 import {
   DndContext,
@@ -19,6 +20,7 @@ import {
   DragOverlay,
   DragStartEvent,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   rectIntersection,
@@ -52,6 +54,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 const SECTION_UNCATEGORIZED = 'uncategorized';
 
@@ -78,6 +81,7 @@ interface LibraryProps {
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   getBooksByFolder: (folderId: string) => Book[];
   getBookUrl: (filePath: string) => Promise<string | null>;
+  onRefresh?: () => Promise<void>;
 }
 
 function SortableFolderCard({
@@ -255,7 +259,9 @@ export function Library({
   onProgressUpdate,
   getBooksByFolder,
   getBookUrl,
+  onRefresh,
 }: LibraryProps) {
+  const [refreshing, setRefreshing] = useState(false);
   const sections = getOrderedSections();
   const hasCategories = categories.length > 0;
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
@@ -303,6 +309,9 @@ export function Library({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
     })
   );
 
@@ -444,46 +453,50 @@ export function Library({
           </div>
         )}
         {isCategory && categoryId ? (
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            {editingCategoryId === categoryId ? (
-              <>
-                <Input
-                  value={editingCategoryName}
-                  onChange={e => setEditingCategoryName(e.target.value)}
-                  className="h-8 max-w-[200px]"
-                  onKeyDown={e => e.key === 'Enter' && handleUpdateCategory()}
-                />
-                <Button size="sm" onClick={handleUpdateCategory}>
-                  Guardar
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setEditingCategoryId(null)}>
-                  Cancelar
-                </Button>
-              </>
-            ) : (
-              <>
-                <Tag className="w-4 h-4 text-muted-foreground" />
-                <h2 className="font-serif text-lg font-semibold text-foreground">{title}</h2>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7">
-                      <MoreVertical className="w-3 h-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuItem onClick={() => { setEditingCategoryId(categoryId); setEditingCategoryName(title); }}>
-                      <Pencil className="w-4 h-4 mr-2" />
-                      Editar
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleRequestDeleteCategory(categoryId)} className="text-destructive">
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Eliminar categoría
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
+          <>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              {editingCategoryId === categoryId ? (
+                <>
+                  <Input
+                    value={editingCategoryName}
+                    onChange={e => setEditingCategoryName(e.target.value)}
+                    className="h-8 max-w-[200px]"
+                    onKeyDown={e => e.key === 'Enter' && handleUpdateCategory()}
+                  />
+                  <Button size="sm" onClick={handleUpdateCategory}>
+                    Guardar
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingCategoryId(null)}>
+                    Cancelar
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Tag className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <h2 className="font-serif text-lg font-semibold text-foreground truncate">{title}</h2>
+                </>
+              )}
+            </div>
+            {editingCategoryId !== categoryId && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 ml-auto">
+                    <MoreVertical className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => { setEditingCategoryId(categoryId); setEditingCategoryName(title); }}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Editar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleRequestDeleteCategory(categoryId)} className="text-destructive">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Eliminar categoría
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
-          </div>
+          </>
         ) : (
           <h2 className="font-serif text-lg font-semibold text-muted-foreground">{title}</h2>
         )}
@@ -621,11 +634,28 @@ export function Library({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => { setCreateCategoryFromFolderId(null); setCreateCategoryOpen(true); setNewCategoryName(''); }}>
+          <Button variant="outline" className="gap-2 h-10" onClick={() => { setCreateCategoryFromFolderId(null); setCreateCategoryOpen(true); setNewCategoryName(''); }}>
             <Tag className="w-4 h-4" />
             Nueva categoría
           </Button>
           <CreateFolderDialog onCreate={onCreateFolder} />
+          {onRefresh && (
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={async () => {
+                setRefreshing(true);
+                await onRefresh();
+                setRefreshing(false);
+              }}
+              disabled={refreshing}
+              title="Actualizar carpetas, categorías y libros"
+              aria-label="Actualizar"
+              className="shrink-0"
+            >
+              <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -705,9 +735,9 @@ export function Library({
           )}
         </SortableContext>
 
-        <DragOverlay>
+        <DragOverlay dropAnimation={null}>
           {activeFolderId ? (
-            <div className="opacity-90 shadow-lg">
+            <div className="opacity-90 shadow-lg touch-none select-none" style={{ touchAction: 'none' }}>
               <FolderCard
                 folder={folders.find(f => f.id === activeFolderId)!}
                 books={getBooksByFolder(activeFolderId)}

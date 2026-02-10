@@ -754,6 +754,6 @@ export function useLibrary() {
     getBooksByFolder,
     updateBookProgress,
     getBookUrl,
-    refreshData: () => Promise.all([fetchFolders(), fetchBooks()]),
+    refreshData: () => Promise.all([fetchFolders(), fetchBooks(), fetchCategories()]),
   };
 }
