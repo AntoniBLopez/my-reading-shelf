@@ -495,17 +495,6 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
 
           {/* PDF Content */}
           <div className={`relative flex-1 overflow-auto min-w-0 flex flex-col ${viewerDarkMode ? 'bg-neutral-900' : 'bg-muted/30'}`}>
-            {isFullscreen && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="absolute top-2 right-2 z-10 shadow-lg"
-                onClick={toggleFullscreen}
-              >
-                <Minimize2 className="w-4 h-4 mr-1" />
-                Salir de pantalla completa
-              </Button>
-            )}
             <div
               ref={containerRef}
               className={`flex-1 overflow-auto flex items-start justify-center p-4 min-w-0 touch-manipulation ${viewerDarkMode ? 'bg-black' : ''}`}
