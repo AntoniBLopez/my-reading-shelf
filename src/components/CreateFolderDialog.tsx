@@ -48,7 +48,13 @@ export function CreateFolderDialog({ onCreate }: CreateFolderDialogProps) {
         <DialogHeader>
           <DialogTitle className="font-serif text-xl">Crear nueva carpeta</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 pt-4">
+        <form
+          className="space-y-4 pt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleCreate();
+          }}
+        >
           <div className="space-y-2">
             <Label htmlFor="folder-name">Nombre de la carpeta</Label>
             <Input
@@ -68,8 +74,8 @@ export function CreateFolderDialog({ onCreate }: CreateFolderDialogProps) {
               rows={3}
             />
           </div>
-          <Button 
-            onClick={handleCreate} 
+          <Button
+            type="submit"
             className="w-full gradient-hero"
             disabled={!name.trim() || loading}
           >
@@ -82,7 +88,7 @@ export function CreateFolderDialog({ onCreate }: CreateFolderDialogProps) {
               'Crear carpeta'
             )}
           </Button>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

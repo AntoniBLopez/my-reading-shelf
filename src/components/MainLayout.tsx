@@ -47,6 +47,7 @@ export function MainLayout() {
     createCategory,
     updateCategory,
     deleteCategory,
+    deleteCategoryWithContents,
     getOrderedSections,
     reorderFolders,
     reorderCategories,
@@ -120,6 +121,7 @@ export function MainLayout() {
               onCreateCategory={createCategory}
               onUpdateCategory={updateCategory}
               onDeleteCategory={deleteCategory}
+              onDeleteCategoryWithContents={deleteCategoryWithContents}
               onReorderFolders={reorderFolders}
               onReorderCategories={reorderCategories}
               onReorderBooks={reorderBooks}

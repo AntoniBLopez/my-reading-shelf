@@ -74,6 +74,7 @@ interface FolderCardProps {
 
 function SortableBookCard({
   book,
+  showDragHandle,
   onToggleBookRead,
   onSetBookState,
   onRenameBook,
@@ -82,6 +83,7 @@ function SortableBookCard({
   getBookUrl,
 }: {
   book: Book;
+  showDragHandle: boolean;
   onToggleBookRead: (id: string, isRead: boolean) => Promise<boolean>;
   onSetBookState: (id: string, state: BookState) => Promise<boolean>;
   onRenameBook: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
@@ -97,7 +99,7 @@ function SortableBookCard({
     <div ref={setNodeRef} style={style} className={isDragging ? 'opacity-50' : ''}>
       <BookCard
         book={book}
-        dragHandleProps={{ listeners, attributes: attributes as object }}
+        dragHandleProps={showDragHandle ? { listeners, attributes: attributes as object } : undefined}
         onToggleRead={onToggleBookRead}
         onSetState={onSetBookState}
         onRename={onRenameBook}
@@ -351,6 +353,7 @@ export function FolderCard({
                       <SortableBookCard
                         key={book.id}
                         book={book}
+                        showDragHandle={books.length > 1}
                         onToggleBookRead={onToggleBookRead}
                         onSetBookState={onSetBookState}
                         onRenameBook={onRenameBook}
@@ -416,15 +419,15 @@ export function FolderCard({
       </Dialog>
 
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
+        <AlertDialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[85vh] overflow-y-auto">
+          <AlertDialogHeader className="w-full">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-full bg-destructive/10">
+              <div className="p-2 rounded-full bg-destructive/10 shrink-0">
                 <Trash2 className="w-5 h-5 text-destructive" />
               </div>
               <AlertDialogTitle className="font-serif">¿Eliminar carpeta?</AlertDialogTitle>
             </div>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="w-full">
               Se eliminará la carpeta <strong>{folder.name}</strong>
               {totalCount > 0 && (
                 <> y sus <strong>{totalCount} libro{totalCount !== 1 ? 's' : ''}</strong></>
@@ -432,14 +435,14 @@ export function FolderCard({
               . Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:space-x-2 sm:space-y-0">
+            <AlertDialogCancel className="m-0 w-full sm:w-auto">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setIsDeleteConfirmOpen(false);
                 onDelete(folder.id);
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
+              className="w-full sm:w-auto bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
             >
               <Trash2 className="w-4 h-4" />
               Eliminar

@@ -28,11 +28,21 @@ import 'react-pdf/src/Page/AnnotationLayer.css';
 import 'react-pdf/src/Page/TextLayer.css';
 
 // Configure PDF.js worker (use https so it works in all contexts)
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+const pdfjsBase = `https://unpkg.com/pdfjs-dist@${pdfjs.version}`;
+pdfjs.GlobalWorkerOptions.workerSrc = `${pdfjsBase}/build/pdf.worker.min.mjs`;
+
+// Enable JPEG2000 (JPX) decoding: worker must load openjpeg.wasm from the same origin/CDN
+const pdfDocOptions = {
+  useWorkerFetch: true,
+  wasmUrl: `${pdfjsBase}/wasm/`,
+  iccUrl: `${pdfjsBase}/iccs/`,
+};
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const SWIPE_THRESHOLD = 60;
+/** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
+const PAGE_WIDTH_SNAP_PX = 64;
 
 interface PDFViewerProps {
   book: Book;
@@ -45,7 +55,7 @@ interface PDFViewerProps {
 export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, getBookUrl }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(book.current_page || 1);
-  const [scale, setScale] = useState<number>(1);
+  const [scale, setScale] = useState<number>(0.7);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +70,8 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const [zoomInputValue, setZoomInputValue] = useState('');
   const zoomInputRef = useRef<HTMLInputElement>(null);
   const [pageInputValue, setPageInputValue] = useState('');
+  const lastPageWidthRef = useRef<number>(600);
+  const resizeRafRef = useRef<number | null>(null);
 
   // Reset URL when dialog closes so next open shows loading for the (possibly new) book
   useEffect(() => {
@@ -81,17 +93,34 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
     return () => { console.warn = orig; };
   }, [isOpen]);
 
-  // React-PDF needs an explicit width for the canvas to render correctly (FAQ: don't rely on CSS alone)
+  // React-PDF needs an explicit width for the canvas to render correctly (FAQ: don't rely on CSS alone).
+  // Only update when width changes meaningfully and throttle to one update per frame to avoid flicker.
   useEffect(() => {
     if (!isOpen || !containerRef.current) return;
     const el = containerRef.current;
     const ro = new ResizeObserver((entries) => {
       const { width } = entries[0]?.contentRect ?? {};
-      if (typeof width === 'number' && width > 0) setPageWidth(width);
+      if (typeof width !== 'number' || width <= 0) return;
+      if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
+      resizeRafRef.current = requestAnimationFrame(() => {
+        resizeRafRef.current = null;
+        const snapped = Math.round(width / PAGE_WIDTH_SNAP_PX) * PAGE_WIDTH_SNAP_PX;
+        const clamped = Math.max(PAGE_WIDTH_SNAP_PX, snapped);
+        if (clamped !== lastPageWidthRef.current) {
+          lastPageWidthRef.current = clamped;
+          setPageWidth(clamped);
+        }
+      });
     });
     ro.observe(el);
-    setPageWidth(el.getBoundingClientRect().width || 600);
-    return () => ro.disconnect();
+    const rawInitial = el.getBoundingClientRect().width || 600;
+    const initial = Math.max(PAGE_WIDTH_SNAP_PX, Math.round(rawInitial / PAGE_WIDTH_SNAP_PX) * PAGE_WIDTH_SNAP_PX);
+    lastPageWidthRef.current = initial;
+    setPageWidth(initial);
+    return () => {
+      if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
+      ro.disconnect();
+    };
   }, [isOpen, pdfUrl]);
 
   // Load PDF URL on open (works for both Supabase signed URL and local blob URL).
@@ -286,13 +315,18 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const toggleFullscreen = useCallback(async () => {
     const el = fullscreenRef.current;
     if (!el) return;
+    const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => Promise<void> };
+    const elAny = el as HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> };
     try {
-      if (!document.fullscreenElement) {
-        await el.requestFullscreen();
-        setIsFullscreen(true);
-      } else {
-        await document.exitFullscreen();
+      if (document.fullscreenElement ?? doc.webkitFullscreenElement) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
         setIsFullscreen(false);
+      } else {
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (elAny.webkitRequestFullscreen) await elAny.webkitRequestFullscreen();
+        else return;
+        setIsFullscreen(true);
       }
     } catch {
       setIsFullscreen(false);
@@ -301,10 +335,15 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
 
   useEffect(() => {
     const onFullscreenChange = () => {
-      if (!document.fullscreenElement) setIsFullscreen(false);
+      const doc = document as Document & { webkitFullscreenElement?: Element };
+      if (!document.fullscreenElement && !doc.webkitFullscreenElement) setIsFullscreen(false);
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    };
   }, []);
 
   return (
@@ -330,36 +369,39 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
 
         {/* Área de pantalla completa: toolbar + contenido (zoom y páginas disponibles en fullscreen) */}
         <div ref={fullscreenRef} className="flex-1 flex flex-col min-h-0 min-w-0">
-          {/* Toolbar */}
-          <div className="flex items-center justify-between px-4 py-2 border-b bg-background shrink-0">
-            <div className="flex items-center gap-2">
+          {/* Toolbar: responsive — wraps to 2 rows on small screens so all controls fit */}
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 px-2 sm:px-4 py-2 border-b bg-background shrink-0 min-w-0">
+            {/* Pagination */}
+            <div className="flex items-center gap-1 sm:gap-2 min-w-0 shrink-0">
               <Button
                 variant="outline"
                 size="icon"
+                className="h-8 w-8 shrink-0"
                 onClick={() => goToPage(pageNumber - 1)}
                 disabled={pageNumber <= 1}
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              <div className="flex items-center gap-1 min-w-[100px] justify-center">
-                <span className="text-sm text-muted-foreground">Página</span>
+              <div className="flex items-center gap-0.5 sm:gap-1 min-w-0 justify-center">
+                <span className="hidden sm:inline text-xs sm:text-sm text-muted-foreground shrink-0">Pág</span>
                 <Input
                   type="text"
                   inputMode="numeric"
-                  className="w-12 h-8 text-center text-sm px-1"
+                  className="w-9 sm:w-12 h-8 text-center text-sm px-0.5 shrink-0"
                   value={pageInputValue}
                   onChange={(e) => setPageInputValue(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   onBlur={applyPageFromInput}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') applyPageFromInput();
                   }}
-                  title="Escribe el número de página y pulsa Enter"
+                  title="Número de página"
                 />
-                <span className="text-sm text-muted-foreground">de {numPages || '...'}</span>
+                <span className="text-xs sm:text-sm text-muted-foreground shrink-0 whitespace-nowrap">/ {numPages || '…'}</span>
               </div>
               <Button
                 variant="outline"
                 size="icon"
+                className="h-8 w-8 shrink-0"
                 onClick={() => goToPage(pageNumber + 1)}
                 disabled={pageNumber >= numPages}
               >
@@ -367,12 +409,14 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               </Button>
             </div>
 
-            <div className="flex items-center gap-2">
+            {/* Fullscreen, theme, zoom — wraps on very narrow screens */}
+            <div className="flex flex-wrap items-center gap-1 sm:gap-2 min-w-0 shrink-0 justify-end">
               <Button
                 variant="outline"
                 size="icon"
+                className="h-8 w-8 shrink-0"
                 onClick={toggleFullscreen}
-                title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa (enfoque)'}
+                title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
               >
                 {isFullscreen ? (
                   <Minimize2 className="w-4 h-4" />
@@ -383,6 +427,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               <Button
                 variant="outline"
                 size="icon"
+                className="h-8 w-8 shrink-0"
                 onClick={() => setTheme(viewerDarkMode ? 'light' : 'dark')}
                 title={viewerDarkMode ? 'Modo claro' : 'Modo oscuro'}
               >
@@ -391,8 +436,10 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               <Button
                 variant="outline"
                 size="icon"
+                className="h-8 w-8 shrink-0"
                 onClick={() => setScaleClamped(s => s - 0.1)}
                 disabled={scale <= MIN_SCALE}
+                title="Menos zoom"
               >
                 <ZoomOut className="w-4 h-4" />
               </Button>
@@ -400,21 +447,23 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                 ref={zoomInputRef}
                 type="text"
                 inputMode="numeric"
-                className="w-14 h-8 text-center text-sm px-1"
+                className="w-10 sm:w-14 h-8 text-center text-sm px-0.5 shrink-0"
                 value={zoomInputValue}
                 onChange={(e) => setZoomInputValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 onBlur={applyZoomFromInput}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') applyZoomFromInput();
                 }}
-                title="Haz clic y escribe el porcentaje de zoom (10–200). ALT + scroll también cambia el zoom."
+                title="Zoom %"
               />
-              <span className="text-sm text-muted-foreground">%</span>
+              <span className="text-xs sm:text-sm text-muted-foreground shrink-0">%</span>
               <Button
                 variant="outline"
                 size="icon"
+                className="h-8 w-8 shrink-0"
                 onClick={() => setScaleClamped(s => s + 0.1)}
                 disabled={scale >= MAX_SCALE}
+                title="Más zoom"
               >
                 <ZoomIn className="w-4 h-4" />
               </Button>
@@ -468,6 +517,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                 >
                   <Document
                     file={pdfUrl}
+                    options={pdfDocOptions}
                     onLoadSuccess={onDocumentLoadSuccess}
                     onLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}

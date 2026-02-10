@@ -74,14 +74,16 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
   return (
     <>
       <div className="flex rounded-lg bg-muted/50 hover:bg-muted transition-colors overflow-hidden">
-        <div
-          className="flex items-center justify-center shrink-0 w-9 border-r border-border/50 rounded-l-lg bg-muted/80 text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
-          aria-label="Arrastrar para ordenar"
-          {...(dragHandleProps?.attributes ?? {})}
-          {...(dragHandleProps?.listeners ?? {})}
-        >
-          <GripVertical className="w-4 h-4" />
-        </div>
+        {dragHandleProps && (
+          <div
+            className="flex items-center justify-center shrink-0 w-9 border-r border-border/50 rounded-l-lg bg-muted/80 text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
+            aria-label="Arrastrar para ordenar"
+            {...dragHandleProps.attributes}
+            {...dragHandleProps.listeners}
+          >
+            <GripVertical className="w-4 h-4" />
+          </div>
+        )}
         <div
           className="flex items-center gap-3 p-3 flex-1 min-w-0 group cursor-pointer"
           onClick={() => setIsViewerOpen(true)}
@@ -233,26 +235,26 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
       </AlertDialog>
 
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
+        <AlertDialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[85vh] overflow-y-auto">
+          <AlertDialogHeader className="w-full">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-full bg-destructive/10">
+              <div className="p-2 rounded-full bg-destructive/10 shrink-0">
                 <Trash2 className="w-5 h-5 text-destructive" />
               </div>
               <AlertDialogTitle className="font-serif">¿Eliminar libro?</AlertDialogTitle>
             </div>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="w-full">
               Se eliminará <strong>{book.title}</strong>. Podrás deshacer desde la notificación durante unos segundos.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:space-x-2 sm:space-y-0">
+            <AlertDialogCancel className="m-0 w-full sm:w-auto">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setIsDeleteConfirmOpen(false);
                 onDelete(book.id);
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
+              className="w-full sm:w-auto bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
             >
               <Trash2 className="w-4 h-4" />
               Eliminar

@@ -165,28 +165,20 @@ export function useLibrary() {
     return true;
   };
 
+  const runPendingLocalFolderDelete = () => {
+    if (!pendingFolderDeleteRef.current) return;
+    const { booksInFolder: pendingBooks } = pendingFolderDeleteRef.current;
+    pendingFolderDeleteRef.current = null;
+    pendingBooks.forEach(b => deletePdfBlob(b.id));
+  };
+
   const deleteFolder = async (id: string) => {
     const folder = folders.find(f => f.id === id);
     if (!folder) return false;
     const booksInFolder = books.filter(b => b.folder_id === id);
 
-    const runPendingFolderDelete = () => {
-      if (!pendingFolderDeleteRef.current) return;
-      const { id: pendingId, folder: pendingFolder, booksInFolder: pendingBooks, isLocal: pendingLocal } = pendingFolderDeleteRef.current;
-      pendingFolderDeleteRef.current = null;
-      if (pendingLocal) {
-        pendingBooks.forEach(b => deletePdfBlob(b.id));
-      } else if (supabase) {
-        pendingBooks.forEach(b => {
-          supabase.storage.from('pdfs').remove([b.file_path]);
-          supabase.from('books').delete().eq('id', b.id);
-        });
-        supabase.from('folders').delete().eq('id', pendingId);
-      }
-    };
-
     if (pendingFolderDeleteRef.current) {
-      runPendingFolderDelete();
+      runPendingLocalFolderDelete();
     }
 
     const isLocalDelete = isLocal;
@@ -199,8 +191,31 @@ export function useLibrary() {
       setLocalBooks(nextBooks);
     }
 
-    const timeout = setTimeout(runPendingFolderDelete, 5000);
-    pendingFolderDeleteRef.current = { id, folder, booksInFolder, timeout, isLocal: isLocalDelete };
+    if (!isLocalDelete && supabase) {
+      try {
+        for (const b of booksInFolder) {
+          await supabase.storage.from('pdfs').remove([b.file_path]);
+          const { error: bookErr } = await supabase.from('books').delete().eq('id', b.id);
+          if (bookErr) throw bookErr;
+        }
+        const { error: folderErr } = await supabase.from('folders').delete().eq('id', id);
+        if (folderErr) throw folderErr;
+        toast.success('Carpeta eliminada');
+        return true;
+      } catch (err) {
+        setFolders(prev => (prev.some(f => f.id === id) ? prev : [folder, ...prev]));
+        setBooks(prev => {
+          const restored = booksInFolder.filter(b => !prev.some(p => p.id === b.id));
+          return restored.length ? [...restored, ...prev] : prev;
+        });
+        toast.error('Error al eliminar la carpeta');
+        console.error(err);
+        return false;
+      }
+    }
+
+    const timeout = setTimeout(runPendingLocalFolderDelete, 5000);
+    pendingFolderDeleteRef.current = { id, folder, booksInFolder, timeout, isLocal: true };
 
     toast.success('Carpeta eliminada', {
       duration: 5000,
@@ -218,13 +233,11 @@ export function useLibrary() {
             const restored = booksInFolder.filter(b => !prev.some(p => p.id === b.id));
             return restored.length ? [...restored, ...prev] : prev;
           });
-          if (isLocalDelete) {
-            const localFolders = getLocalFolders();
-            if (!localFolders.some(f => f.id === id)) setLocalFolders([folder, ...localFolders]);
-            const localBooks = getLocalBooks();
-            const toRestore = booksInFolder.filter(b => !localBooks.some(lb => lb.id === b.id));
-            if (toRestore.length) setLocalBooks([...toRestore, ...localBooks]);
-          }
+          const localFolders = getLocalFolders();
+          if (!localFolders.some(f => f.id === id)) setLocalFolders([folder, ...localFolders]);
+          const localBooks = getLocalBooks();
+          const toRestore = booksInFolder.filter(b => !localBooks.some(lb => lb.id === b.id));
+          if (toRestore.length) setLocalBooks([...toRestore, ...localBooks]);
         },
       },
     });
@@ -573,6 +586,26 @@ export function useLibrary() {
     return true;
   };
 
+  const deleteCategoryWithContents = async (id: string) => {
+    const { categories: catsWithFolders } = getOrderedSections();
+    const sec = catsWithFolders.find(c => c.category.id === id);
+    const folderIds = sec?.folders.map(f => f.id) ?? [];
+    for (const fid of folderIds) {
+      await deleteFolder(fid);
+    }
+    const nextCategories = categories.filter(c => c.id !== id);
+    setCategories(nextCategories);
+    setLocalCategories(nextCategories);
+    const newPositions = { ...layout.folderPositions };
+    folderIds.forEach(fid => delete newPositions[fid]);
+    persistLayout({
+      folderPositions: newPositions,
+      categoryOrder: layout.categoryOrder.filter(cid => cid !== id),
+    });
+    toast.success('Categoría, carpetas y libros eliminados');
+    return true;
+  };
+
   const reorderFolders = (folderId: string, targetCategoryId: string | null, targetIndex: number) => {
     const folder = folders.find(f => f.id === folderId);
     if (!folder) return;
@@ -632,6 +665,7 @@ export function useLibrary() {
     createCategory,
     updateCategory,
     deleteCategory,
+    deleteCategoryWithContents,
     getOrderedSections,
     reorderFolders,
     reorderCategories,
