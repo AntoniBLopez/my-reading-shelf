@@ -25,6 +25,7 @@ import {
   useSensor,
   useSensors,
   pointerWithin,
+  rectIntersection,
   useDroppable,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -583,7 +584,7 @@ export function Library({
         {/* Mobile/tablet: una columna (100% por card); desktop: dos columnas (50% por card) */}
         <div className="relative flex flex-col gap-3 lg:hidden">
           {list.slice(0, limit).map(folder =>
-            folder.id === activeFolderId ? (
+            String(folder.id) === String(activeFolderId) ? (
               <FolderSlotPlaceholder key={folder.id} showDragHandle={showFolderDragHandle} />
             ) : (
               <SortableFolderCard
@@ -611,7 +612,7 @@ export function Library({
             >
               <div className="flex flex-col gap-3">
                 {list.slice(limit).map(folder =>
-                  folder.id === activeFolderId ? (
+                  String(folder.id) === String(activeFolderId) ? (
                     <FolderSlotPlaceholder key={folder.id} showDragHandle={showFolderDragHandle} />
                   ) : (
                     <SortableFolderCard
@@ -637,7 +638,7 @@ export function Library({
             </div>
           )}
           {showSlotOverlay && (
-            <div className="absolute inset-0 flex flex-col gap-3 pointer-events-none [&>div]:pointer-events-auto">
+            <div className="absolute inset-0 z-10 flex flex-col gap-3 pointer-events-none [&>div]:pointer-events-auto">
               {Array.from({ length: slotCount }, (_, i) => (
                 <SlotDropZone
                   key={`slot-${i}`}
@@ -651,7 +652,7 @@ export function Library({
         <div className="relative hidden lg:block">
           <div className="grid grid-cols-2 gap-3">
             {list.slice(0, limit).map(folder =>
-              folder.id === activeFolderId ? (
+              String(folder.id) === String(activeFolderId) ? (
                 <FolderSlotPlaceholder key={folder.id} showDragHandle={showFolderDragHandle} />
               ) : (
                 <SortableFolderCard
@@ -679,7 +680,7 @@ export function Library({
               >
                 <div className="grid grid-cols-2 gap-3">
                   {list.slice(limit).map(folder =>
-                    folder.id === activeFolderId ? (
+                    String(folder.id) === String(activeFolderId) ? (
                       <FolderSlotPlaceholder key={folder.id} showDragHandle={showFolderDragHandle} />
                     ) : (
                       <SortableFolderCard
@@ -706,7 +707,7 @@ export function Library({
             )}
           </div>
           {showSlotOverlay && (
-            <div className="absolute inset-0 grid grid-cols-2 gap-3 pointer-events-none [&>div]:pointer-events-auto">
+            <div className="absolute inset-0 z-10 grid grid-cols-2 gap-3 pointer-events-none [&>div]:pointer-events-auto">
               {Array.from({ length: slotCount }, (_, i) => (
                 <SlotDropZone
                   key={`slot-${i}`}
@@ -820,7 +821,7 @@ export function Library({
 
       <DndContext
         sensors={sensors}
-        collisionDetection={pointerWithin}
+        collisionDetection={rectIntersection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
@@ -878,7 +879,7 @@ export function Library({
                 <div className="relative">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {uncatList.map(folder =>
-                      folder.id === activeFolderId ? (
+                      String(folder.id) === String(activeFolderId) ? (
                         <FolderSlotPlaceholder key={folder.id} showDragHandle={showFolderDragHandle} />
                       ) : (
                         <SortableFolderCard
@@ -902,7 +903,7 @@ export function Library({
                     )}
                   </div>
                   {activeFolderId != null && (
-                    <div className="absolute inset-0 grid grid-cols-1 lg:grid-cols-2 gap-4 pointer-events-none [&>div]:pointer-events-auto">
+                    <div className="absolute inset-0 z-10 grid grid-cols-1 lg:grid-cols-2 gap-4 pointer-events-none [&>div]:pointer-events-auto">
                       {Array.from({ length: uncatSlotCount }, (_, i) => (
                         <SlotDropZone
                           key={`slot-${i}`}
@@ -928,7 +929,7 @@ export function Library({
               )}
               <div className="flex-1 min-w-0">
                 <FolderCard
-                  folder={folders.find(f => f.id === activeFolderId)!}
+                  folder={folders.find(f => String(f.id) === String(activeFolderId))!}
                   books={getBooksByFolder(activeFolderId)}
                   leftAttached={showFolderDragHandle}
                   onUpdate={onUpdateFolder}

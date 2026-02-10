@@ -742,8 +742,10 @@ export function useLibrary() {
     }
 
     if (!isLocal && supabase) {
+      const isValidUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const entries = Object.entries(newPositions).filter(([id]) => isValidUuid(id));
       Promise.all(
-        Object.entries(newPositions).map(([id, { categoryId, position }]) =>
+        entries.map(([id, { categoryId, position }]) =>
           supabase.from('folders').update({ category_id: categoryId, position }).eq('id', id)
         )
       ).then(results => {

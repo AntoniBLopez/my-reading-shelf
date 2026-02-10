@@ -492,7 +492,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         {/* Área de pantalla completa: toolbar + contenido (zoom y páginas disponibles en fullscreen) */}
         <div ref={fullscreenRef} className="flex-1 flex flex-col min-h-0 min-w-0 relative">
           {isFullscreen && showFullscreenHint && isMobileOrTablet && (
-            <div className="absolute top-0 left-0 right-0 z-10 flex justify-center pt-3 pb-2 px-4 pointer-events-none">
+            <div className="absolute top-[60px] left-0 right-0 z-10 flex justify-center pt-3 pb-2 px-4 pointer-events-none">
               <p className="text-xs sm:text-sm text-center text-foreground/90 bg-background/95 backdrop-blur rounded-lg px-3 py-2 shadow-md border border-border/50">
                 Haz doble toque para ocultar/mostrar la barra
               </p>
