@@ -224,9 +224,11 @@
   max-height: 2000px;
 }
 
-/* PDF viewer: tema vía clase .dark en <html> (next-themes). Sin cambiar clases en el DOM del canvas → sin parpadeo al cambiar tema */
+/* PDF viewer: todo viene de la clase .dark en <html> (next-themes). Sin lógica de tema en el visor. */
 .pdf-viewer-pdf-wrapper {
   background-color: rgb(255 255 255) !important;
+  contain: layout paint;
+  min-height: 0;
 }
 
 .dark .pdf-viewer-pdf-wrapper {

@@ -66,7 +66,8 @@ export function useLibrary() {
     const { data, error } = await supabase
       .from('books')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('folder_id')
+      .order('position', { ascending: true });
     if (error) {
       toast.error('Error al cargar libros');
       console.error(error);
@@ -75,6 +76,7 @@ export function useLibrary() {
         ...book,
         current_page: (book as any).current_page ?? 0,
         total_pages: (book as any).total_pages ?? 0,
+        position: (book as any).position ?? 0,
       })) as Book[];
       setBooks(booksWithProgress);
     }
@@ -307,6 +309,8 @@ export function useLibrary() {
       console.error(uploadError);
       return null;
     }
+    const { count } = await supabase.from('books').select('*', { count: 'exact', head: true }).eq('folder_id', folderId);
+    const position = count ?? 0;
     const { data, error } = await supabase
       .from('books')
       .insert({
@@ -315,6 +319,7 @@ export function useLibrary() {
         title,
         file_path: filePath,
         file_name: file.name.toLowerCase(),
+        position,
       })
       .select()
       .single();
@@ -515,21 +520,24 @@ export function useLibrary() {
   const getBooksByFolder = (folderId: string) => {
     const stateOrder: Record<BookState, number> = { 'En progreso': 0, Pendiente: 1, Leído: 2 };
     const inFolder = books.filter(b => b.folder_id === folderId);
-    const orderIds = layout.bookOrder?.[folderId];
-    if (orderIds?.length) {
-      const byId = new Map(inFolder.map(b => [b.id, b]));
-      const ordered: Book[] = [];
-      for (const id of orderIds) {
-        const b = byId.get(id);
-        if (b) ordered.push(b);
+    if (isLocal) {
+      const orderIds = layout.bookOrder?.[folderId];
+      if (orderIds?.length) {
+        const byId = new Map(inFolder.map(b => [b.id, b]));
+        const ordered: Book[] = [];
+        for (const id of orderIds) {
+          const b = byId.get(id);
+          if (b) ordered.push(b);
+        }
+        inFolder.forEach(b => { if (!orderIds.includes(b.id)) ordered.push(b); });
+        return ordered;
       }
-      inFolder.forEach(b => { if (!orderIds.includes(b.id)) ordered.push(b); });
-      return ordered;
+      return [...inFolder].sort((a, b) => stateOrder[getBookState(a)] - stateOrder[getBookState(b)]);
     }
-    return [...inFolder].sort((a, b) => stateOrder[getBookState(a)] - stateOrder[getBookState(b)]);
+    return [...inFolder].sort((a, b) => (a.position ?? 999) - (b.position ?? 999));
   };
 
-  const reorderBooks = (folderId: string, fromIndex: number, toIndex: number) => {
+  const reorderBooks = async (folderId: string, fromIndex: number, toIndex: number) => {
     const ordered = getBooksByFolder(folderId).map(b => b.id);
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.length || toIndex >= ordered.length) return;
     const next = [...ordered];
@@ -537,13 +545,34 @@ export function useLibrary() {
     next.splice(toIndex, 0, removed);
     const newBookOrder = { ...layout.bookOrder, [folderId]: next };
     persistLayout({ ...layout, bookOrder: newBookOrder });
+    if (!isLocal && supabase) {
+      const results = await Promise.all(
+        next.map((id, index) => supabase.from('books').update({ position: index }).eq('id', id))
+      );
+      const err = results.find(r => r.error);
+      if (err?.error) {
+        toast.error('Error al guardar el orden de los libros');
+        console.error(err.error);
+        return;
+      }
+      setBooks(prev =>
+        prev.map(b => {
+          const i = next.indexOf(b.id);
+          return i === -1 ? b : { ...b, position: i };
+        })
+      );
+    }
   };
 
   const moveBook = async (bookId: string, targetFolderId: string): Promise<boolean> => {
     const book = books.find(b => b.id === bookId);
     if (!book || book.folder_id === targetFolderId) return false;
     const sourceFolderId = book.folder_id;
-    const updates = { folder_id: targetFolderId };
+    const sourceOrder = (layout.bookOrder?.[sourceFolderId] ?? []).filter((id: string) => id !== bookId);
+    const targetOrder = layout.bookOrder?.[targetFolderId] ?? getBooksByFolder(targetFolderId).map(b => b.id);
+    const newTargetOrder = targetOrder.includes(bookId) ? targetOrder : [...targetOrder, bookId];
+    const positionInTarget = newTargetOrder.indexOf(bookId);
+    const updates = { folder_id: targetFolderId, ...(isLocal ? {} : { position: positionInTarget }) };
     if (isLocal) {
       const next = getLocalBooks().map(b => (b.id === bookId ? { ...b, ...updates } : b));
       setLocalBooks(next);
@@ -557,9 +586,6 @@ export function useLibrary() {
       }
       setBooks(prev => prev.map(b => (b.id === bookId ? { ...b, ...updates } : b)));
     } else return false;
-    const sourceOrder = (layout.bookOrder?.[sourceFolderId] ?? []).filter((id: string) => id !== bookId);
-    const targetOrder = layout.bookOrder?.[targetFolderId] ?? getBooksByFolder(targetFolderId).map(b => b.id);
-    const newTargetOrder = targetOrder.includes(bookId) ? targetOrder : [...targetOrder, bookId];
     persistLayout({
       ...layout,
       bookOrder: {

@@ -23,6 +23,7 @@ export type Database = {
           folder_id: string
           id: string
           is_read: boolean
+          position: number
           read_at: string | null
           title: string
           total_pages: number
@@ -37,6 +38,7 @@ export type Database = {
           folder_id: string
           id?: string
           is_read?: boolean
+          position?: number
           read_at?: string | null
           title: string
           total_pages?: number
@@ -51,6 +53,7 @@ export type Database = {
           folder_id?: string
           id?: string
           is_read?: boolean
+          position?: number
           read_at?: string | null
           title?: string
           total_pages?: number

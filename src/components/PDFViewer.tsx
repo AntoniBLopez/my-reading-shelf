@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { useTheme } from 'next-themes';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import { useTheme } from 'next-themes';
 import { Book } from '@/types/library';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +49,74 @@ const TAP_MOVEMENT_THRESHOLD_PX = 12;
 /** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
 
+/** Solo re-renderiza cuando cambian datos del PDF; ignoramos callbacks para que el cambio de tema no fuerce re-render (los callbacks se invocan por ref). */
+function pdfContentBlockPropsAreEqual(
+  prev: { pdfUrl: string; showBookBorder: boolean; pageNumber: number; pageWidth: number; scale: number },
+  next: { pdfUrl: string; showBookBorder: boolean; pageNumber: number; pageWidth: number; scale: number }
+) {
+  return (
+    prev.pdfUrl === next.pdfUrl &&
+    prev.showBookBorder === next.showBookBorder &&
+    prev.pageNumber === next.pageNumber &&
+    prev.pageWidth === next.pageWidth &&
+    prev.scale === next.scale
+  );
+}
+
+const PDFContentBlock = React.memo(function PDFContentBlock(props: {
+  pdfUrl: string;
+  showBookBorder: boolean;
+  pageNumber: number;
+  pageWidth: number;
+  scale: number;
+  onDocumentLoadSuccess: (args: { numPages: number }) => void;
+  onDocumentLoadError: (error: Error) => void;
+  onItemClick: (args: { pageNumber: number }) => void;
+}) {
+  return (
+    <div
+      className="min-h-full w-full flex items-center justify-center pdf-viewer-pdf-wrapper"
+      data-show-border={props.showBookBorder}
+    >
+      <Document
+        file={props.pdfUrl}
+        options={pdfDocOptions}
+        onLoadSuccess={props.onDocumentLoadSuccess}
+        onLoadError={props.onDocumentLoadError}
+        onItemClick={props.onItemClick}
+        loading={null}
+        className={props.showBookBorder ? 'shadow-lg' : ''}
+      >
+        <Page
+          pageNumber={props.pageNumber}
+          width={props.pageWidth}
+          scale={props.scale}
+          loading={null}
+          className="bg-white dark:bg-black"
+          renderTextLayer={true}
+          renderAnnotationLayer={true}
+        />
+      </Document>
+    </div>
+  );
+}, pdfContentBlockPropsAreEqual);
+
+/** Solo el botón de tema usa useTheme(); el libro se estila solo con la clase .dark en <html> (next-themes). */
+function ThemeToggleButton() {
+  const { resolvedTheme, setTheme } = useTheme();
+  return (
+    <Button
+      variant="outline"
+      size="icon"
+      className="h-8 w-8 shrink-0"
+      onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+      title={resolvedTheme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+    >
+      {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+    </Button>
+  );
+}
+
 interface PDFViewerProps {
   book: Book;
   isOpen: boolean;
@@ -69,7 +137,6 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const [fullscreenHeaderVisible, setFullscreenHeaderVisible] = useState(true);
   const [showFullscreenHint, setShowFullscreenHint] = useState(false);
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
-  const { resolvedTheme, setTheme } = useTheme();
   const [showBookBorder, setShowBookBorder] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
@@ -615,15 +682,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               >
                 <Square className="w-4 h-4" />
               </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-                title={resolvedTheme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
-              >
-                {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </Button>
+              <ThemeToggleButton />
               <Button
                 variant="outline"
                 size="icon"
@@ -697,30 +756,16 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               )}
 
               {pdfUrl && !error && (
-                <div
-                  className="min-h-full w-full flex items-center justify-center pdf-viewer-pdf-wrapper"
-                  data-show-border={showBookBorder}
-                >
-                  <Document
-                    file={pdfUrl}
-                    options={pdfDocOptions}
-                    onLoadSuccess={onDocumentLoadSuccess}
-                    onLoadError={onDocumentLoadError}
-                    onItemClick={onInternalLinkClick}
-                    loading={null}
-                    className={showBookBorder ? 'shadow-lg' : ''}
-                  >
-                    <Page
-                      pageNumber={pageNumber}
-                      width={pageWidth}
-                      scale={scale}
-                      loading={null}
-                      className="bg-white dark:bg-black"
-                      renderTextLayer={true}
-                      renderAnnotationLayer={true}
-                    />
-                  </Document>
-                </div>
+                <PDFContentBlock
+                  pdfUrl={pdfUrl}
+                  showBookBorder={showBookBorder}
+                  pageNumber={pageNumber}
+                  pageWidth={pageWidth}
+                  scale={scale}
+                  onDocumentLoadSuccess={onDocumentLoadSuccess}
+                  onDocumentLoadError={onDocumentLoadError}
+                  onItemClick={onInternalLinkClick}
+                />
               )}
             </div>
           </div>
