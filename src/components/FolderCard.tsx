@@ -286,7 +286,7 @@ export function FolderCard({
             {readCount > 0 && (
               <Badge variant="outline" className="gap-1 border-success/30 text-success">
                 <BookCheck className="w-3 h-3" />
-                {readCount} leídos
+                {readCount}
               </Badge>
             )}
             <DropdownMenu>
