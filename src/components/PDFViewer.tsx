@@ -23,6 +23,7 @@ import {
   Minimize2,
   Moon,
   Sun,
+  Square,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import 'react-pdf/src/Page/AnnotationLayer.css';
@@ -44,6 +45,7 @@ const MAX_SCALE = 2;
 const SWIPE_THRESHOLD = 60;
 const DOUBLE_TAP_MS = 500;
 const MAX_TAP_DURATION_MS = 250;
+const MIN_DOUBLE_TAP_GAP_MS = 100;
 /** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
 
@@ -70,6 +72,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const { resolvedTheme, setTheme } = useTheme();
   // Freeze theme when dialog opens so parent re-renders (e.g. after page change) don't cause light/dark flicker
   const [viewerDarkMode, setViewerDarkMode] = useState(false);
+  const [showBookBorder, setShowBookBorder] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; scale: number; distance: number; touchedAt?: number } | null>(null);
@@ -295,7 +298,8 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
       };
     } else if (e.touches.length === 1) {
       isPinchingRef.current = false;
-      if (isFullscreen && lastTapTimeRef.current > 0 && Date.now() - lastTapTimeRef.current < DOUBLE_TAP_MS) {
+      const elapsed = Date.now() - lastTapTimeRef.current;
+      if (isFullscreen && lastTapTimeRef.current > 0 && elapsed >= MIN_DOUBLE_TAP_GAP_MS && elapsed < DOUBLE_TAP_MS) {
         lastTapTimeRef.current = 0;
         setFullscreenHeaderVisible(v => !v);
       }
@@ -585,6 +589,17 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               >
                 {viewerDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </Button>
+              {viewerDarkMode && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className={cn('h-8 w-8 shrink-0', showBookBorder && 'bg-primary/10 border-primary/30')}
+                  onClick={() => setShowBookBorder(b => !b)}
+                  title={showBookBorder ? 'Ocultar borde del libro' : 'Mostrar borde del libro'}
+                >
+                  <Square className="w-4 h-4" />
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="icon"
@@ -667,7 +682,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                     onLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}
                     loading={null}
-                    className={`shadow-lg ${viewerDarkMode ? 'pdf-viewer-dark' : ''}`} // border border-neutral-600/40
+                    className={cn('shadow-lg', viewerDarkMode && 'pdf-viewer-dark', viewerDarkMode && showBookBorder && 'border border-neutral-600/40')}
                   >
                     <Page
                       pageNumber={pageNumber}
