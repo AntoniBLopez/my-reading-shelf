@@ -683,7 +683,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               ref={containerRef}
               className={`relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 touch-manipulation ${viewerDarkMode ? 'bg-black' : 'bg-white'}`}
               onPointerDown={handlePointerDown}
-              onDoubleClick={() => isFullscreen && toggleFullscreenHeader()}
+              onDoubleClick={!isMobileOrTablet && isFullscreen ? () => toggleFullscreenHeader() : undefined}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
