@@ -43,6 +43,7 @@ const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const SWIPE_THRESHOLD = 60;
 const DOUBLE_TAP_MS = 500;
+const MAX_TAP_DURATION_MS = 250;
 /** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
 
@@ -71,7 +72,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const [viewerDarkMode, setViewerDarkMode] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
-  const touchStartRef = useRef<{ x: number; y: number; scale: number; distance: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; scale: number; distance: number; touchedAt?: number } | null>(null);
   const lastTapTimeRef = useRef<number>(0);
   const fullscreenHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scaleRef = useRef<number>(0.7);
@@ -303,6 +304,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         y: e.touches[0].clientY,
         scale: scaleRef.current,
         distance: 0,
+        touchedAt: Date.now(),
       };
     }
   }, [isFullscreen]);
@@ -350,10 +352,12 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
           else goToPage(pageNumber - 1);
         } else if (isFullscreen) {
           const now = Date.now();
+          const touchDuration = start.touchedAt != null ? now - start.touchedAt : Infinity;
+          const wasQuickTap = touchDuration < MAX_TAP_DURATION_MS;
           if (now - lastTapTimeRef.current < DOUBLE_TAP_MS) {
             lastTapTimeRef.current = 0;
             setFullscreenHeaderVisible(v => !v);
-          } else {
+          } else if (wasQuickTap) {
             lastTapTimeRef.current = now;
           }
         }
