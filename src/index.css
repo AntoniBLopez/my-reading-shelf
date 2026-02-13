@@ -224,19 +224,26 @@
   max-height: 2000px;
 }
 
-/* PDF viewer dark mode: aplicado desde un wrapper para no cambiar props de Document/Page y evitar que la página desaparezca al cambiar tema */
-.pdf-viewer-dark-wrapper {
-  background-color: rgb(0, 0, 0) !important;
+/* PDF viewer: tema vía clase .dark en <html> (next-themes). Sin cambiar clases en el DOM del canvas → sin parpadeo al cambiar tema */
+.pdf-viewer-pdf-wrapper {
+  background-color: rgb(255 255 255) !important;
 }
-.pdf-viewer-dark-wrapper .react-pdf__Document,
-.pdf-viewer-dark-wrapper .react-pdf__Page {
-  background-color: rgb(0, 0, 0) !important;
+
+.dark .pdf-viewer-pdf-wrapper {
+  background-color: rgb(0 0 0) !important;
 }
-.pdf-viewer-dark-wrapper[data-show-border="true"] .react-pdf__Document {
-  border: 1px solid rgb(82 82 82 / 0.4);
+
+.dark .pdf-viewer-pdf-wrapper .react-pdf__Document,
+.dark .pdf-viewer-pdf-wrapper .react-pdf__Page {
+  background-color: rgb(0 0 0) !important;
 }
-.pdf-viewer-dark-wrapper canvas,
-.pdf-viewer-dark-wrapper .react-pdf__Page__textContent,
-.pdf-viewer-dark-wrapper .react-pdf__Page__annotations {
-  filter: invert(1);
+
+.dark .pdf-viewer-pdf-wrapper canvas,
+.dark .pdf-viewer-pdf-wrapper .react-pdf__Page__textContent,
+.dark .pdf-viewer-pdf-wrapper .react-pdf__Page__annotations {
+  filter: invert(1) !important;
+}
+
+.dark .pdf-viewer-pdf-wrapper[data-show-border="true"] .react-pdf__Document {
+  border: 1px solid rgb(82 82 82 / 0.4) !important;
 }

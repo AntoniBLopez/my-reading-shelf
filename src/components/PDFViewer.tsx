@@ -70,8 +70,6 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const [showFullscreenHint, setShowFullscreenHint] = useState(false);
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
-  // Freeze theme when dialog opens so parent re-renders (e.g. after page change) don't cause light/dark flicker
-  const [viewerDarkMode, setViewerDarkMode] = useState(false);
   const [showBookBorder, setShowBookBorder] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
@@ -203,13 +201,6 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
       setPageNumber(1);
     }
   }, [isOpen]);
-
-  // Freeze theme for the viewer when dialog opens so re-renders don't cause light/dark flicker
-  useEffect(() => {
-    if (isOpen && (resolvedTheme === 'dark' || resolvedTheme === 'light')) {
-      setViewerDarkMode(resolvedTheme === 'dark');
-    }
-  }, [isOpen, resolvedTheme]);
 
   // Sync page input with current page number
   useEffect(() => {
@@ -628,14 +619,10 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                 variant="outline"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                onClick={() => {
-                  const nextDark = !viewerDarkMode;
-                  setViewerDarkMode(nextDark);
-                  setTheme(nextDark ? 'dark' : 'light');
-                }}
-                title={viewerDarkMode ? 'Modo claro' : 'Modo oscuro'}
+                onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+                title={resolvedTheme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
               >
-                {viewerDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </Button>
               <Button
                 variant="outline"
@@ -677,11 +664,11 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
 
           {/* PDF Content: contenedor con scroll; touch-action: manipulation (clase touch-manipulation) desactiva zoom doble-tap del navegador */}
           <div
-            className={`relative flex-1 overflow-auto min-w-0 min-h-0 ${viewerDarkMode ? 'bg-black' : 'bg-white'}`}
+            className="relative flex-1 overflow-auto min-w-0 min-h-0 bg-white dark:bg-black"
           >
             <div
               ref={containerRef}
-              className={`relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 touch-manipulation ${viewerDarkMode ? 'bg-black' : 'bg-white'}`}
+              className="relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 touch-manipulation bg-white dark:bg-black"
               onPointerDown={handlePointerDown}
               onDoubleClick={!isMobileOrTablet && isFullscreen ? () => toggleFullscreenHeader() : undefined}
               onTouchStart={handleTouchStart}
@@ -696,14 +683,14 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               }}
             >
               {loading && (
-                <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 ${viewerDarkMode ? 'bg-black text-neutral-200' : 'bg-white'}`}>
-                  <Loader2 className={`w-8 h-8 animate-spin ${viewerDarkMode ? 'text-neutral-300' : 'text-primary'}`} />
-                  <p className={viewerDarkMode ? 'text-neutral-400' : 'text-muted-foreground'}>Cargando PDF...</p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white dark:bg-black text-neutral-900 dark:text-neutral-200">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary dark:text-neutral-300" />
+                  <p className="text-muted-foreground dark:text-neutral-400">Cargando PDF...</p>
                 </div>
               )}
 
               {error && (
-                <div className={`flex flex-col items-center justify-center h-full gap-3 ${viewerDarkMode ? 'bg-black' : 'bg-white'}`}>
+                <div className="flex flex-col items-center justify-center h-full gap-3 bg-white dark:bg-black">
                   <p className="text-destructive">{error}</p>
                   <Button variant="outline" onClick={handleClose}>Cerrar</Button>
                 </div>
@@ -711,10 +698,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
 
               {pdfUrl && !error && (
                 <div
-                  className={cn(
-                    'min-h-full w-full flex items-center justify-center',
-                    viewerDarkMode ? 'pdf-viewer-dark-wrapper' : 'bg-white'
-                  )}
+                  className="min-h-full w-full flex items-center justify-center pdf-viewer-pdf-wrapper"
                   data-show-border={showBookBorder}
                 >
                   <Document
@@ -731,7 +715,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                       width={pageWidth}
                       scale={scale}
                       loading={null}
-                      className="bg-white"
+                      className="bg-white dark:bg-black"
                       renderTextLayer={true}
                       renderAnnotationLayer={true}
                     />
