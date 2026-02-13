@@ -232,8 +232,8 @@
 .pdf-viewer-dark-wrapper .react-pdf__Page {
   background-color: rgb(0, 0, 0) !important;
 }
-.pdf-viewer-dark-wrapper .react-pdf__Document.border {
-  border-color: rgb(82 82 82 / 0.4);
+.pdf-viewer-dark-wrapper[data-show-border="true"] .react-pdf__Document {
+  border: 1px solid rgb(82 82 82 / 0.4);
 }
 .pdf-viewer-dark-wrapper canvas,
 .pdf-viewer-dark-wrapper .react-pdf__Page__textContent,

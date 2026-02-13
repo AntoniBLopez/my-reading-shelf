@@ -43,8 +43,9 @@ const pdfDocOptions = {
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const SWIPE_THRESHOLD = 60;
-const DOUBLE_TAP_MS = 500;
-const MAX_TAP_DURATION_MS = 250;
+/** Double-tap (Pointer Events): ventana en ms y umbral de movimiento en px para considerar mismo punto */
+const DOUBLE_TAP_DELAY_MS = 450;
+const TAP_MOVEMENT_THRESHOLD_PX = 12;
 /** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
 
@@ -71,11 +72,13 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const { resolvedTheme, setTheme } = useTheme();
   // Freeze theme when dialog opens so parent re-renders (e.g. after page change) don't cause light/dark flicker
   const [viewerDarkMode, setViewerDarkMode] = useState(false);
-  const [showBookBorder, setShowBookBorder] = useState(true);
+  const [showBookBorder, setShowBookBorder] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; scale: number; distance: number; touchedAt?: number } | null>(null);
-  const lastTapTimeRef = useRef<number>(0);
+  /** Double-tap (solo touch vía Pointer Events): último toque para detectar segundo tap */
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const doubleTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullscreenHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scaleRef = useRef<number>(0.7);
   const pinchRafRef = useRef<number | null>(null);
@@ -348,16 +351,6 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         if (isHorizontalSwipe) {
           if (dx < 0) goToPage(pageNumber + 1);
           else goToPage(pageNumber - 1);
-        } else if (isFullscreen) {
-          const now = Date.now();
-          const touchDuration = start.touchedAt != null ? now - start.touchedAt : Infinity;
-          const wasQuickTap = touchDuration < MAX_TAP_DURATION_MS;
-          if (wasQuickTap && lastTapTimeRef.current > 0 && now - lastTapTimeRef.current < DOUBLE_TAP_MS) {
-            lastTapTimeRef.current = 0;
-            setFullscreenHeaderVisible(v => !v);
-          } else if (wasQuickTap) {
-            lastTapTimeRef.current = now;
-          }
         }
       }
     } else if (e.touches.length === 2) {
@@ -369,18 +362,56 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         distance: dist > 0 ? dist : 1,
       };
     }
-  }, [goToPage, pageNumber, isFullscreen]);
+  }, [goToPage, pageNumber]);
 
-  const handleMouseDown = useCallback(() => {
-    if (!isFullscreen) return;
-    const now = Date.now();
-    if (lastTapTimeRef.current > 0 && now - lastTapTimeRef.current < DOUBLE_TAP_MS) {
-      lastTapTimeRef.current = 0;
-      setFullscreenHeaderVisible(v => !v);
-    } else {
-      lastTapTimeRef.current = now;
-    }
-  }, [isFullscreen]);
+  /** Toggle barra en fullscreen (usado por doble toque en touch y doble clic en desktop) */
+  const toggleFullscreenHeader = useCallback(() => {
+    setFullscreenHeaderVisible(v => !v);
+  }, []);
+
+  /**
+   * Double-tap vía Pointer Events (solo touch): evita eventos sintéticos y doble disparo.
+   * Solo procesa pointerType === 'touch'; en desktop se usa onDoubleClick.
+   */
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== 'touch') return;
+      if (!isFullscreen) return;
+
+      const now = Date.now();
+      const { clientX: x, clientY: y } = e;
+
+      if (lastTapRef.current) {
+        const { time, x: prevX, y: prevY } = lastTapRef.current;
+        const timeSince = now - time;
+        const dx = Math.abs(x - prevX);
+        const dy = Math.abs(y - prevY);
+
+        if (
+          timeSince < DOUBLE_TAP_DELAY_MS &&
+          dx < TAP_MOVEMENT_THRESHOLD_PX &&
+          dy < TAP_MOVEMENT_THRESHOLD_PX
+        ) {
+          toggleFullscreenHeader();
+          lastTapRef.current = null;
+          if (doubleTapTimeoutRef.current) {
+            clearTimeout(doubleTapTimeoutRef.current);
+            doubleTapTimeoutRef.current = null;
+          }
+          e.preventDefault();
+          return;
+        }
+      }
+
+      lastTapRef.current = { time: now, x, y };
+      if (doubleTapTimeoutRef.current) clearTimeout(doubleTapTimeoutRef.current);
+      doubleTapTimeoutRef.current = setTimeout(() => {
+        lastTapRef.current = null;
+        doubleTapTimeoutRef.current = null;
+      }, DOUBLE_TAP_DELAY_MS);
+    },
+    [isFullscreen, toggleFullscreenHeader]
+  );
 
   // Navegación con flechas del teclado
   useEffect(() => {
@@ -411,6 +442,16 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
     };
     el.addEventListener('touchmove', onMove, { passive: false });
     return () => el.removeEventListener('touchmove', onMove);
+  }, []);
+
+  // Limpieza del timeout de double-tap al cerrar
+  useEffect(() => {
+    return () => {
+      if (doubleTapTimeoutRef.current) {
+        clearTimeout(doubleTapTimeoutRef.current);
+        doubleTapTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   const handleClose = useCallback(() => {
@@ -634,14 +675,15 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
           </div>
           )}
 
-          {/* PDF Content: contenedor con scroll; el hijo crece con el PDF para poder scroll hasta arriba/abajo */}
+          {/* PDF Content: contenedor con scroll; touch-action: manipulation (clase touch-manipulation) desactiva zoom doble-tap del navegador */}
           <div
             className={`relative flex-1 overflow-auto min-w-0 min-h-0 ${viewerDarkMode ? 'bg-black' : 'bg-white'}`}
-            onMouseDown={handleMouseDown}
           >
             <div
               ref={containerRef}
               className={`relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 touch-manipulation ${viewerDarkMode ? 'bg-black' : 'bg-white'}`}
+              onPointerDown={handlePointerDown}
+              onDoubleClick={() => isFullscreen && toggleFullscreenHeader()}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -673,6 +715,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                     'min-h-full w-full flex items-center justify-center',
                     viewerDarkMode ? 'pdf-viewer-dark-wrapper' : 'bg-white'
                   )}
+                  data-show-border={showBookBorder}
                 >
                   <Document
                     file={pdfUrl}
@@ -681,7 +724,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                     onLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}
                     loading={null}
-                    className={cn('shadow-lg', showBookBorder && 'border border-border')}
+                    className={showBookBorder ? 'shadow-lg' : ''}
                   >
                     <Page
                       pageNumber={pageNumber}
