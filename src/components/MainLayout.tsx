@@ -151,7 +151,7 @@ export function MainLayout() {
         <main className={cn('flex-1 p-4 lg:pl-14 lg:pr-8 lg:pt-8 overflow-auto min-w-0', 'pb-20 lg:pb-8')}>
         <div className="max-w-5xl mx-auto">
           {currentView === 'dashboard' ? (
-            <Dashboard stats={stats} />
+            <Dashboard stats={stats} onNavigateToLibrary={() => setCurrentView('library')} />
           ) : (
             <Library
               folders={folders}

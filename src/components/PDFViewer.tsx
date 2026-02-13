@@ -42,6 +42,7 @@ const pdfDocOptions = {
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const SWIPE_THRESHOLD = 60;
+const DOUBLE_TAP_MS = 500;
 /** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
 
@@ -293,6 +294,10 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
       };
     } else if (e.touches.length === 1) {
       isPinchingRef.current = false;
+      if (isFullscreen && lastTapTimeRef.current > 0 && Date.now() - lastTapTimeRef.current < DOUBLE_TAP_MS) {
+        lastTapTimeRef.current = 0;
+        setFullscreenHeaderVisible(v => !v);
+      }
       touchStartRef.current = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY,
@@ -300,7 +305,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
         distance: 0,
       };
     }
-  }, []);
+  }, [isFullscreen]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2 && touchStartRef.current && touchStartRef.current.distance > 0) {
@@ -345,7 +350,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
           else goToPage(pageNumber - 1);
         } else if (isFullscreen) {
           const now = Date.now();
-          if (now - lastTapTimeRef.current < 400) {
+          if (now - lastTapTimeRef.current < DOUBLE_TAP_MS) {
             lastTapTimeRef.current = 0;
             setFullscreenHeaderVisible(v => !v);
           } else {
@@ -363,6 +368,17 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
       };
     }
   }, [goToPage, pageNumber, isFullscreen]);
+
+  const handleMouseDown = useCallback(() => {
+    if (!isFullscreen) return;
+    const now = Date.now();
+    if (lastTapTimeRef.current > 0 && now - lastTapTimeRef.current < DOUBLE_TAP_MS) {
+      lastTapTimeRef.current = 0;
+      setFullscreenHeaderVisible(v => !v);
+    } else {
+      lastTapTimeRef.current = now;
+    }
+  }, [isFullscreen]);
 
   // Navegación con flechas del teclado
   useEffect(() => {
@@ -603,16 +619,14 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
           </div>
           )}
 
-          {/* PDF Content */}
+          {/* PDF Content: contenedor con scroll; el hijo crece con el PDF para poder scroll hasta arriba/abajo */}
           <div
-            className={`relative flex-1 overflow-auto min-w-0 flex flex-col ${viewerDarkMode ? 'bg-neutral-900' : 'bg-muted/30'}`}
-            onDoubleClick={() => {
-              if (isFullscreen) setFullscreenHeaderVisible(v => !v);
-            }}
+            className={`relative flex-1 overflow-auto min-w-0 min-h-0 ${viewerDarkMode ? 'bg-black' : 'bg-white'}`}
+            onMouseDown={handleMouseDown}
           >
             <div
               ref={containerRef}
-              className={`relative flex-1 overflow-auto flex items-center justify-center p-4 min-w-0 touch-manipulation ${viewerDarkMode ? 'bg-black' : ''}`}
+              className={`relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 touch-manipulation ${viewerDarkMode ? 'bg-black' : 'bg-white'}`}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -625,14 +639,14 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               }}
             >
               {loading && (
-                <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 ${viewerDarkMode ? 'bg-black text-neutral-200' : 'bg-muted/30'}`}>
+                <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 ${viewerDarkMode ? 'bg-black text-neutral-200' : 'bg-white'}`}>
                   <Loader2 className={`w-8 h-8 animate-spin ${viewerDarkMode ? 'text-neutral-300' : 'text-primary'}`} />
                   <p className={viewerDarkMode ? 'text-neutral-400' : 'text-muted-foreground'}>Cargando PDF...</p>
                 </div>
               )}
 
               {error && (
-                <div className={`flex flex-col items-center justify-center h-full gap-3 ${viewerDarkMode ? 'bg-black' : ''}`}>
+                <div className={`flex flex-col items-center justify-center h-full gap-3 ${viewerDarkMode ? 'bg-black' : 'bg-white'}`}>
                   <p className="text-destructive">{error}</p>
                   <Button variant="outline" onClick={handleClose}>Cerrar</Button>
                 </div>
@@ -649,7 +663,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                     onLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}
                     loading={null}
-                    className={`shadow-lg ${viewerDarkMode ? 'pdf-viewer-dark' : ''}`}
+                    className={`shadow-lg ${viewerDarkMode ? 'pdf-viewer-dark' : ''}`} // border border-neutral-600/40
                   >
                     <Page
                       pageNumber={pageNumber}

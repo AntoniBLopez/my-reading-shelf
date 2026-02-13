@@ -9,9 +9,10 @@ interface DashboardProps {
     unreadBooks: number;
     totalFolders: number;
   };
+  onNavigateToLibrary?: () => void;
 }
 
-export function Dashboard({ stats }: DashboardProps) {
+export function Dashboard({ stats, onNavigateToLibrary }: DashboardProps) {
   const readPercentage = stats.totalBooks > 0 
     ? Math.round((stats.readBooks / stats.totalBooks) * 100) 
     : 0;
@@ -55,21 +56,32 @@ export function Dashboard({ stats }: DashboardProps) {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
-        {statCards.map((stat) => (
-          <Card key={stat.title} className="shadow-card hover:shadow-hover transition-shadow duration-300">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 md:p-6 md:pb-2">
-              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground leading-tight">
-                {stat.title}
-              </CardTitle>
-              <div className={`p-1.5 md:p-2 rounded-lg shrink-0 ${stat.bgColor}`}>
-                <stat.icon className={`w-3.5 h-3.5 md:w-4 md:h-4 ${stat.color}`} />
-              </div>
-            </CardHeader>
-            <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
-              <div className="text-xl md:text-3xl font-serif font-bold">{stat.value}</div>
-            </CardContent>
-          </Card>
-        ))}
+        {statCards.map((stat) => {
+          const isClickable = (stat.title === 'Total' || stat.title === 'Carpetas') && onNavigateToLibrary;
+          const card = (
+            <Card
+              key={stat.title}
+              className={`shadow-card hover:shadow-hover transition-shadow duration-300 ${isClickable ? 'cursor-pointer' : ''}`}
+              onClick={isClickable ? onNavigateToLibrary : undefined}
+              role={isClickable ? 'button' : undefined}
+              tabIndex={isClickable ? 0 : undefined}
+              onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigateToLibrary(); } } : undefined}
+            >
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 md:p-6 md:pb-2">
+                <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground leading-tight">
+                  {stat.title}
+                </CardTitle>
+                <div className={`p-1.5 md:p-2 rounded-lg shrink-0 ${stat.bgColor}`}>
+                  <stat.icon className={`w-3.5 h-3.5 md:w-4 md:h-4 ${stat.color}`} />
+                </div>
+              </CardHeader>
+              <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+                <div className="text-xl md:text-3xl font-serif font-bold">{stat.value}</div>
+              </CardContent>
+            </Card>
+          );
+          return card;
+        })}
       </div>
 
       <Card className="shadow-card">

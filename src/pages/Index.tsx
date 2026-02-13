@@ -8,9 +8,7 @@ function AppContent() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse">
-          <div className="w-16 h-16 gradient-hero rounded-2xl" />
-        </div>
+        <img src="/icon-dark.png" alt="My Reading Shelf" className="w-16 h-16 object-contain animate-pulse" />
       </div>
     );
   }

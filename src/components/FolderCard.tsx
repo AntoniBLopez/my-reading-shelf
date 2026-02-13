@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Folder, Book, BookState } from '@/types/library';
 import {
   DndContext,
@@ -153,6 +153,8 @@ export function FolderCard({
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isMobile = useIsMobile();
   const bookLimit = isMobile ? 2 : 4;
@@ -221,6 +223,29 @@ export function FolderCard({
       setUploadFiles(pdfs);
     }
     e.target.value = '';
+  };
+
+  const addPdfFiles = (files: FileList | File[]) => {
+    const list = Array.isArray(files) ? files : Array.from(files);
+    const pdfs = list.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (pdfs.length) setUploadFiles(prev => [...prev, ...pdfs]);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files?.length) addPdfFiles(e.dataTransfer.files);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDraggingOver(false);
   };
 
   const removeFile = (index: number) => {
@@ -312,16 +337,32 @@ export function FolderCard({
                   <DialogTitle className="font-serif">Subir libros (PDF)</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-4 min-w-0 overflow-hidden">
-                  <div className="space-y-2 min-w-0">
-                    <Label htmlFor="file">Selecciona uno o varios PDF</Label>
-                    <Input
-                      id="file"
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      multiple
-                      onChange={handleFileChange}
-                      className="cursor-pointer min-w-0"
-                    />
+                  <input
+                    ref={fileInputRef}
+                    id="file"
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    multiple
+                    onChange={handleFileChange}
+                    className="sr-only"
+                    aria-hidden
+                  />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 min-h-[120px] cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isDraggingOver ? 'border-primary bg-primary/10' : 'border-muted-foreground/30 hover:border-muted-foreground/50 hover:bg-muted/30'}`}
+                    aria-label="Arrastra PDF aquí o haz clic para seleccionar archivos"
+                  >
+                    <Upload className="w-8 h-8 text-muted-foreground" />
+                    <p className="text-sm text-center text-muted-foreground">
+                      Arrastra PDF aquí o haz clic para seleccionar
+                    </p>
+                    <p className="text-xs text-muted-foreground/80">Se permiten varios archivos</p>
                   </div>
                   {uploadFiles.length > 0 && (
                     <div className="space-y-2 min-w-0">
