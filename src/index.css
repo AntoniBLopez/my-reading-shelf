@@ -224,10 +224,19 @@
   max-height: 2000px;
 }
 
-/* PDF viewer dark mode: contenedor de la página (barra abajo con zoom bajo). No tocar canvas ni capas para que se vea el contenido invertido. */
-.pdf-viewer-dark,
-.pdf-viewer-dark .react-pdf__Document,
-.pdf-viewer-dark .react-pdf__Page,
-.pdf-viewer-dark-page {
+/* PDF viewer dark mode: aplicado desde un wrapper para no cambiar props de Document/Page y evitar que la página desaparezca al cambiar tema */
+.pdf-viewer-dark-wrapper {
   background-color: rgb(0, 0, 0) !important;
+}
+.pdf-viewer-dark-wrapper .react-pdf__Document,
+.pdf-viewer-dark-wrapper .react-pdf__Page {
+  background-color: rgb(0, 0, 0) !important;
+}
+.pdf-viewer-dark-wrapper .react-pdf__Document.border {
+  border-color: rgb(82 82 82 / 0.4);
+}
+.pdf-viewer-dark-wrapper canvas,
+.pdf-viewer-dark-wrapper .react-pdf__Page__textContent,
+.pdf-viewer-dark-wrapper .react-pdf__Page__annotations {
+  filter: invert(1);
 }

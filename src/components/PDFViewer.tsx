@@ -574,22 +574,24 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                   <Maximize2 className="w-4 h-4" />
                 )}
               </Button>
-              {viewerDarkMode && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  onClick={() => setShowBookBorder(b => !b)}
-                  title={showBookBorder ? 'Ocultar borde del libro' : 'Mostrar borde del libro'}
-                >
-                  <Square className="w-4 h-4" />
-                </Button>
-              )}
               <Button
                 variant="outline"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                onClick={() => setTheme(viewerDarkMode ? 'light' : 'dark')}
+                onClick={() => setShowBookBorder(b => !b)}
+                title={showBookBorder ? 'Ocultar borde del libro' : 'Mostrar borde del libro'}
+              >
+                <Square className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => {
+                  const nextDark = !viewerDarkMode;
+                  setViewerDarkMode(nextDark);
+                  setTheme(nextDark ? 'dark' : 'light');
+                }}
                 title={viewerDarkMode ? 'Modo claro' : 'Modo oscuro'}
               >
                 {viewerDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -667,7 +669,10 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
 
               {pdfUrl && !error && (
                 <div
-                  className={`min-h-full w-full flex items-center justify-center ${viewerDarkMode ? 'bg-[#000000]' : 'bg-white'}`}
+                  className={cn(
+                    'min-h-full w-full flex items-center justify-center',
+                    viewerDarkMode ? 'pdf-viewer-dark-wrapper' : 'bg-white'
+                  )}
                 >
                   <Document
                     file={pdfUrl}
@@ -676,14 +681,14 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
                     onLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}
                     loading={null}
-                    className={cn('shadow-lg', viewerDarkMode && 'pdf-viewer-dark', viewerDarkMode && showBookBorder && 'border border-neutral-600/40')}
+                    className={cn('shadow-lg', showBookBorder && 'border border-border')}
                   >
                     <Page
                       pageNumber={pageNumber}
                       width={pageWidth}
                       scale={scale}
                       loading={null}
-                      className={viewerDarkMode ? 'pdf-viewer-dark-page [&_canvas]:invert [&_.react-pdf__Page__textContent]:invert [&_.react-pdf__Page__annotations]:invert' : 'bg-white'}
+                      className="bg-white"
                       renderTextLayer={true}
                       renderAnnotationLayer={true}
                     />
