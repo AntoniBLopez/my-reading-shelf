@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useTheme } from 'next-themes';
 import { Book } from '@/types/library';
@@ -48,6 +48,8 @@ const DOUBLE_TAP_DELAY_MS = 450;
 const TAP_MOVEMENT_THRESHOLD_PX = 12;
 /** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
+/** Ignore ResizeObserver updates smaller than this (e.g. scrollbar on theme change) so PDFContentBlock doesn't re-render and Document doesn't reset */
+const PAGE_WIDTH_MIN_DELTA_PX = 48;
 
 /** Solo re-renderiza cuando cambian datos del PDF; ignoramos callbacks para que el cambio de tema no fuerce re-render (los callbacks se invocan por ref). */
 function pdfContentBlockPropsAreEqual(
@@ -73,13 +75,14 @@ const PDFContentBlock = React.memo(function PDFContentBlock(props: {
   onDocumentLoadError: (error: Error) => void;
   onItemClick: (args: { pageNumber: number }) => void;
 }) {
+  const file = useMemo(() => props.pdfUrl, [props.pdfUrl]);
   return (
     <div
       className="min-h-full w-full flex items-center justify-center pdf-viewer-pdf-wrapper"
       data-show-border={props.showBookBorder}
     >
       <Document
-        file={props.pdfUrl}
+        file={file}
         options={pdfDocOptions}
         onLoadSuccess={props.onDocumentLoadSuccess}
         onLoadError={props.onDocumentLoadError}
@@ -125,7 +128,16 @@ interface PDFViewerProps {
   getBookUrl: (filePath: string) => Promise<string | null>;
 }
 
-export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, getBookUrl }: PDFViewerProps) {
+function pdfViewerPropsAreEqual(prev: PDFViewerProps, next: PDFViewerProps) {
+  return (
+    prev.book.id === next.book.id &&
+    prev.book.file_path === next.book.file_path &&
+    prev.book.current_page === next.book.current_page &&
+    prev.isOpen === next.isOpen
+  );
+}
+
+function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUrl }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(book.current_page || 1);
   const [scale, setScale] = useState<number>(0.7);
@@ -153,6 +165,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
   const zoomInputRef = useRef<HTMLInputElement>(null);
   const [pageInputValue, setPageInputValue] = useState('');
   const lastPageWidthRef = useRef<number>(600);
+  const lastRawWidthRef = useRef<number>(600);
   const resizeRafRef = useRef<number | null>(null);
 
   scaleRef.current = scale;
@@ -216,6 +229,9 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
     const ro = new ResizeObserver((entries) => {
       const { width } = entries[0]?.contentRect ?? {};
       if (typeof width !== 'number' || width <= 0) return;
+      const rawDelta = Math.abs(width - lastRawWidthRef.current);
+      if (rawDelta < PAGE_WIDTH_MIN_DELTA_PX) return;
+      lastRawWidthRef.current = width;
       if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
       resizeRafRef.current = requestAnimationFrame(() => {
         resizeRafRef.current = null;
@@ -229,6 +245,7 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
     });
     ro.observe(el);
     const rawInitial = el.getBoundingClientRect().width || 600;
+    lastRawWidthRef.current = rawInitial;
     const initial = Math.max(PAGE_WIDTH_SNAP_PX, Math.round(rawInitial / PAGE_WIDTH_SNAP_PX) * PAGE_WIDTH_SNAP_PX);
     lastPageWidthRef.current = initial;
     setPageWidth(initial);
@@ -742,30 +759,32 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
               }}
             >
               {loading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white dark:bg-black text-neutral-900 dark:text-neutral-200">
+                <div key="pdf-viewer-loading" className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white dark:bg-black text-neutral-900 dark:text-neutral-200">
                   <Loader2 className="w-8 h-8 animate-spin text-primary dark:text-neutral-300" />
                   <p className="text-muted-foreground dark:text-neutral-400">Cargando PDF...</p>
                 </div>
               )}
 
               {error && (
-                <div className="flex flex-col items-center justify-center h-full gap-3 bg-white dark:bg-black">
+                <div key="pdf-viewer-error" className="flex flex-col items-center justify-center h-full gap-3 bg-white dark:bg-black">
                   <p className="text-destructive">{error}</p>
                   <Button variant="outline" onClick={handleClose}>Cerrar</Button>
                 </div>
               )}
 
               {pdfUrl && !error && (
-                <PDFContentBlock
-                  pdfUrl={pdfUrl}
-                  showBookBorder={showBookBorder}
-                  pageNumber={pageNumber}
-                  pageWidth={pageWidth}
-                  scale={scale}
-                  onDocumentLoadSuccess={onDocumentLoadSuccess}
-                  onDocumentLoadError={onDocumentLoadError}
-                  onItemClick={onInternalLinkClick}
-                />
+                <div key="pdf-viewer-content">
+                  <PDFContentBlock
+                    pdfUrl={pdfUrl}
+                    showBookBorder={showBookBorder}
+                    pageNumber={pageNumber}
+                    pageWidth={pageWidth}
+                    scale={scale}
+                    onDocumentLoadSuccess={onDocumentLoadSuccess}
+                    onDocumentLoadError={onDocumentLoadError}
+                    onItemClick={onInternalLinkClick}
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -785,3 +804,5 @@ export default function PDFViewer({ book, isOpen, onClose, onProgressUpdate, get
     </Dialog>
   );
 }
+
+export default React.memo(PDFViewerComponent, pdfViewerPropsAreEqual);
