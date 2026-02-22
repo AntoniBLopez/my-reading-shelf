@@ -318,8 +318,16 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
   const goToPage = useCallback((page: number) => {
     const newPage = Math.max(1, Math.min(page, numPages));
     setPageNumber(newPage);
-    // Progress is saved on close (handleClose) to avoid parent re-renders and page/theme jump
   }, [numPages]);
+
+  // Auto-save progress in background when page changes (debounced, non-blocking)
+  useEffect(() => {
+    if (!isOpen || numPages <= 0) return;
+    const timer = setTimeout(() => {
+      void onProgressUpdate(book.id, pageNumber, numPages).catch(() => {});
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [isOpen, pageNumber, numPages, book.id, onProgressUpdate]);
 
   const applyPageFromInput = useCallback(() => {
     const n = parseInt(pageInputValue, 10);
