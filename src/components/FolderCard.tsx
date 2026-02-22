@@ -78,6 +78,8 @@ interface FolderCardProps {
   allFolders?: { id: string; name: string }[];
   /** Abre el diálogo de nueva categoría; si se pasa folderId, esa carpeta se asignará a la nueva categoría */
   onOpenCreateCategory?: (folderId: string) => void;
+  /** Book ID from URL (?book=xxx) - auto-expand folder and books list if it contains this book */
+  openBookId?: string | null;
 }
 
 function SortableBookCard({
@@ -142,9 +144,14 @@ export function FolderCard({
   onMoveBook,
   allFolders,
   onOpenCreateCategory,
+  openBookId,
 }: FolderCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [booksExpanded, setBooksExpanded] = useState(false);
+  const isMobile = useIsMobile();
+  const bookLimit = isMobile ? 2 : 4;
+  const folderContainsOpenBook = books.some(b => b.id === openBookId);
+  const openBookIsInRest = books.slice(bookLimit).some(b => b.id === openBookId);
+  const [isExpanded, setIsExpanded] = useState(folderContainsOpenBook);
+  const [booksExpanded, setBooksExpanded] = useState(openBookIsInRest);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -156,8 +163,6 @@ export function FolderCard({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isMobile = useIsMobile();
-  const bookLimit = isMobile ? 2 : 4;
   const showBooksCollapse = books.length > bookLimit;
   const initialBooks = books.slice(0, bookLimit);
   const restBooks = books.slice(bookLimit);

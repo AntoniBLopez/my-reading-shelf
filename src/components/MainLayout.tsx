@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, forwardRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Dashboard } from './Dashboard';
 import { Library } from './Library';
@@ -60,6 +61,8 @@ function getViewFromSearchParams(): View {
 }
 
 export function MainLayout() {
+  const [searchParams] = useSearchParams();
+  const openBookId = searchParams.get('book');
   const [currentView, setCurrentViewState] = useState<View>(getViewFromSearchParams);
 
   const setCurrentView = useCallback((view: View) => {
@@ -179,6 +182,7 @@ export function MainLayout() {
               getBooksByFolder={getBooksByFolder}
               getBookUrl={getBookUrl}
               onRefresh={async () => { await refreshData(); }}
+              openBookId={openBookId}
             />
           )}
         </div>

@@ -85,6 +85,8 @@ interface LibraryProps {
   folders: Folder[];
   books: Book[];
   categories: FolderCategory[];
+  /** Book ID from URL (?book=xxx) - used to auto-expand folder and open viewer */
+  openBookId?: string | null;
   getOrderedSections: () => { uncategorized: Folder[]; categories: { category: FolderCategory; folders: Folder[] }[] };
   onCreateFolder: (name: string, description?: string) => Promise<any>;
   onUpdateFolder: (id: string, updates: Partial<Pick<Folder, 'name' | 'description'>>) => Promise<boolean>;
@@ -125,6 +127,7 @@ function SortableFolderCard({
   onMoveBook,
   allFolders,
   onOpenCreateCategory,
+  openBookId,
 }: {
   folder: Folder;
   books: Book[];
@@ -142,6 +145,7 @@ function SortableFolderCard({
   onMoveBook?: (bookId: string, targetFolderId: string) => Promise<boolean>;
   allFolders?: { id: string; name: string }[];
   onOpenCreateCategory?: (folderId: string) => void;
+  openBookId?: string | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `folder-${folder.id}`,
@@ -189,6 +193,7 @@ function SortableFolderCard({
             onMoveBook={onMoveBook}
             allFolders={allFolders}
             onOpenCreateCategory={onOpenCreateCategory}
+            openBookId={openBookId}
           />
         </div>
       </div>
@@ -311,6 +316,7 @@ export function Library({
   folders,
   books,
   categories,
+  openBookId,
   getOrderedSections,
   onCreateFolder,
   onUpdateFolder,
@@ -352,7 +358,16 @@ export function Library({
   const [overlayWidth, setOverlayWidth] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<{ categoryId: string | null; index: number } | null>(null);
   const [deleteCategoryConfirmId, setDeleteCategoryConfirmId] = useState<string | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const initialExpandedSections = (() => {
+    if (!openBookId) return new Set<string>();
+    const book = books.find(b => b.id === openBookId);
+    if (!book) return new Set<string>();
+    const folder = folders.find(f => f.id === book.folder_id);
+    if (!folder) return new Set<string>();
+    const sectionId = folder.category_id == null ? SECTION_UNCATEGORIZED : `section-${folder.category_id}`;
+    return new Set([sectionId]);
+  })();
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(initialExpandedSections);
   const isMobile = useIsMobile();
   const folderLimit = isMobile ? 2 : 4;
   const getFolderCountInCategory = (categoryId: string) => {
@@ -645,6 +660,7 @@ export function Library({
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
+                openBookId={openBookId}
               />
             )
           )}
@@ -675,6 +691,7 @@ export function Library({
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
+                openBookId={openBookId}
                     />
                   )
                 )}
@@ -717,6 +734,7 @@ export function Library({
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
+                openBookId={openBookId}
                 />
               )
             )}
@@ -948,6 +966,7 @@ export function Library({
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
+                openBookId={openBookId}
                         />
                       )
                     )}
@@ -994,6 +1013,7 @@ export function Library({
                   onMoveBook={onMoveBook}
                   allFolders={allFolders}
                   onOpenCreateCategory={handleOpenCreateCategory}
+                  openBookId={openBookId}
                 />
               </div>
             </div>
