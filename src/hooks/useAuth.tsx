@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import { LOCAL_USER_ID } from '@/lib/localStorage';
@@ -44,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const isLocalOnly = !isSupabaseConfigured();
+  const lastTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured() || !supabase) {
@@ -55,6 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, newSession) => {
+        const newToken = newSession?.access_token ?? null;
+        if (lastTokenRef.current === newToken) return;
+        lastTokenRef.current = newToken;
         setSession(newSession);
         setUser(newSession?.user ?? null);
         setLoading(false);
@@ -62,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     supabase.auth.getSession().then(({ data: { session: s } }) => {
+      lastTokenRef.current = s?.access_token ?? null;
       setSession(s);
       setUser(s?.user ?? null);
       setLoading(false);

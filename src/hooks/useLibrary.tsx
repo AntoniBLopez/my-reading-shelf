@@ -36,6 +36,8 @@ export function useLibrary() {
     timeout: ReturnType<typeof setTimeout>;
     isLocal: boolean;
   } | null>(null);
+  const hasLoadedOnceRef = useRef(false);
+  const lastUserIdRef = useRef<string | null>(null);
 
   const fetchFolders = useCallback(async () => {
     if (!user) return;
@@ -108,16 +110,37 @@ export function useLibrary() {
 
   useEffect(() => {
     if (user) {
-      setLayout(getLocalFolderLayout());
-      setLoading(true);
-      if (isLocal) {
-        setCategories(getLocalCategories());
-        setFolders(getLocalFolders());
-        setBooks(getLocalBooks());
-        setLoading(false);
-      } else {
-        Promise.all([fetchFolders(), fetchBooks(), fetchCategories()]).finally(() => setLoading(false));
+      if (lastUserIdRef.current !== user.id) {
+        hasLoadedOnceRef.current = false;
+        lastUserIdRef.current = user.id;
       }
+      setLayout(getLocalFolderLayout());
+      if (hasLoadedOnceRef.current) {
+        if (isLocal) {
+          setCategories(getLocalCategories());
+          setFolders(getLocalFolders());
+          setBooks(getLocalBooks());
+        } else {
+          void Promise.all([fetchFolders(), fetchBooks(), fetchCategories()]);
+        }
+      } else {
+        setLoading(true);
+        if (isLocal) {
+          setCategories(getLocalCategories());
+          setFolders(getLocalFolders());
+          setBooks(getLocalBooks());
+          setLoading(false);
+          hasLoadedOnceRef.current = true;
+        } else {
+          Promise.all([fetchFolders(), fetchBooks(), fetchCategories()]).finally(() => {
+            setLoading(false);
+            hasLoadedOnceRef.current = true;
+          });
+        }
+      }
+    } else {
+      lastUserIdRef.current = null;
+      hasLoadedOnceRef.current = false;
     }
   }, [user, isLocal, fetchFolders, fetchBooks, fetchCategories]);
 
