@@ -337,16 +337,18 @@ export function FolderCard({
                   <DialogTitle className="font-serif">Subir libros (PDF)</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-4 min-w-0 overflow-hidden">
-                  <input
-                    ref={fileInputRef}
-                    id="file"
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    multiple
-                    onChange={handleFileChange}
-                    className="sr-only"
-                    aria-hidden
-                  />
+                  {isUploadOpen && (
+                    <input
+                      ref={fileInputRef}
+                      id="file"
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      multiple
+                      onChange={handleFileChange}
+                      className="sr-only"
+                      aria-hidden
+                    />
+                  )}
                   <div
                     role="button"
                     tabIndex={0}

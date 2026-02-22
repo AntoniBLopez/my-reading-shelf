@@ -53,6 +53,7 @@ const BottomNavButton = forwardRef<HTMLButtonElement, React.ComponentProps<typeo
 
 function getViewFromSearchParams(): View {
   const params = new URLSearchParams(window.location.search);
+  if (params.has('book')) return 'library';
   const tab = params.get('tab');
   if (tab === 'library' || tab === 'dashboard') return tab;
   return 'dashboard';

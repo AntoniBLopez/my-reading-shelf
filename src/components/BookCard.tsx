@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Book, getBookState, type BookState } from '@/types/library';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,7 +51,25 @@ export interface BookCardProps {
 }
 
 export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRename, onDelete, onProgressUpdate, getBookUrl, onMoveToFolder, foldersForMove }: BookCardProps) {
-  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isViewerOpen = searchParams.get('book') === book.id;
+
+  const openViewer = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'library');
+      next.set('book', book.id);
+      return next;
+    });
+  };
+
+  const closeViewer = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('book');
+      return next;
+    });
+  };
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -93,7 +112,7 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
         )}
         <div
           className="flex items-start gap-3 p-3 flex-1 min-w-0 group cursor-pointer"
-          onClick={() => setIsViewerOpen(true)}
+          onClick={openViewer}
         >
           <div
             className={`p-2 rounded-lg shrink-0 ${
@@ -213,7 +232,7 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
       <PDFViewer
         book={book}
         isOpen={isViewerOpen}
-        onClose={() => setIsViewerOpen(false)}
+        onClose={closeViewer}
         onProgressUpdate={onProgressUpdate}
         getBookUrl={getBookUrl}
       />
