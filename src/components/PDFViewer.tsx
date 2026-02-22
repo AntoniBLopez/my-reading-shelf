@@ -129,10 +129,10 @@ interface PDFViewerProps {
 }
 
 function pdfViewerPropsAreEqual(prev: PDFViewerProps, next: PDFViewerProps) {
+  // Don't compare current_page - it changes on auto-save and would cause re-renders/jank
   return (
     prev.book.id === next.book.id &&
     prev.book.file_path === next.book.file_path &&
-    prev.book.current_page === next.book.current_page &&
     prev.isOpen === next.isOpen
   );
 }
