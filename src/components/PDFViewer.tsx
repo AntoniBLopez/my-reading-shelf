@@ -46,6 +46,9 @@ const SWIPE_THRESHOLD = 60;
 /** Double-tap (Pointer Events): ventana en ms y umbral de movimiento en px para considerar mismo punto */
 const DOUBLE_TAP_DELAY_MS = 450;
 const TAP_MOVEMENT_THRESHOLD_PX = 12;
+/** Double-tap/double-click: fracción del ancho para zona izquierda (anterior) y derecha (siguiente); centro = resto */
+const DOUBLE_TAP_LEFT_ZONE = 0.4;
+const DOUBLE_TAP_RIGHT_ZONE = 0.6;
 /** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
 /** Ignore ResizeObserver updates smaller than this (e.g. scrollbar on theme change) so PDFContentBlock doesn't re-render and Document doesn't reset */
@@ -418,22 +421,26 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
       const start = touchStartRef.current;
       touchStartRef.current = null;
       isPinchingRef.current = false;
-      if (pinchRafRef.current !== null) {
+      if (pinchRafRef.current != null) {
         cancelAnimationFrame(pinchRafRef.current);
         pinchRafRef.current = null;
       }
-      if (pendingScaleRef.current !== null) {
+      if (pendingScaleRef.current != null) {
         setScale(pendingScaleRef.current);
         pendingScaleRef.current = null;
       }
       if (start && start.distance === 0 && e.changedTouches[0]) {
-        const end = e.changedTouches[0];
-        const dx = end.clientX - start.x;
-        const dy = end.clientY - start.y;
-        const isHorizontalSwipe = Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy);
-        if (isHorizontalSwipe) {
-          if (dx < 0) goToPage(pageNumber + 1);
-          else goToPage(pageNumber - 1);
+        const scrollEl = containerRef.current?.parentElement;
+        const hasHorizontalScroll = scrollEl && scrollEl.scrollWidth > scrollEl.clientWidth;
+        if (!hasHorizontalScroll) {
+          const end = e.changedTouches[0];
+          const dx = end.clientX - start.x;
+          const dy = end.clientY - start.y;
+          const isHorizontalSwipe = Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy);
+          if (isHorizontalSwipe) {
+            if (dx < 0) goToPage(pageNumber + 1);
+            else goToPage(pageNumber - 1);
+          }
         }
       }
     } else if (e.touches.length === 2) {
@@ -452,17 +459,37 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
     setFullscreenHeaderVisible(v => !v);
   }, []);
 
+  /** Doble toque/clic: izquierda = página anterior, derecha = siguiente, centro = toggle barra (solo fullscreen) */
+  const handleDoubleTapOrClick = useCallback(
+    (clientX: number, containerEl: HTMLDivElement | null) => {
+      if (!containerEl) return;
+      const rect = containerEl.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const w = rect.width;
+      if (w <= 0) return;
+      const rel = x / w;
+      if (rel < DOUBLE_TAP_LEFT_ZONE) {
+        goToPage(pageNumber - 1);
+      } else if (rel > DOUBLE_TAP_RIGHT_ZONE) {
+        goToPage(pageNumber + 1);
+      } else if (isFullscreen) {
+        toggleFullscreenHeader();
+      }
+    },
+    [goToPage, pageNumber, isFullscreen, toggleFullscreenHeader]
+  );
+
   /**
    * Double-tap vía Pointer Events (solo touch): evita eventos sintéticos y doble disparo.
-   * Solo procesa pointerType === 'touch'; en desktop se usa onDoubleClick.
+   * Zona izquierda = página anterior, derecha = siguiente, centro (solo fullscreen) = toggle barra.
    */
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.pointerType !== 'touch') return;
-      if (!isFullscreen) return;
 
       const now = Date.now();
       const { clientX: x, clientY: y } = e;
+      const containerEl = e.currentTarget;
 
       if (lastTapRef.current) {
         const { time, x: prevX, y: prevY } = lastTapRef.current;
@@ -475,7 +502,7 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
           dx < TAP_MOVEMENT_THRESHOLD_PX &&
           dy < TAP_MOVEMENT_THRESHOLD_PX
         ) {
-          toggleFullscreenHeader();
+          handleDoubleTapOrClick(x, containerEl);
           lastTapRef.current = null;
           if (doubleTapTimeoutRef.current) {
             clearTimeout(doubleTapTimeoutRef.current);
@@ -493,7 +520,15 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
         doubleTapTimeoutRef.current = null;
       }, DOUBLE_TAP_DELAY_MS);
     },
-    [isFullscreen, toggleFullscreenHeader]
+    [handleDoubleTapOrClick]
+  );
+
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isMobileOrTablet) return;
+      handleDoubleTapOrClick(e.clientX, e.currentTarget);
+    },
+    [handleDoubleTapOrClick, isMobileOrTablet]
   );
 
   // Navegación con flechas del teclado
@@ -637,8 +672,8 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
             <div className="absolute top-[40px] left-0 right-0 z-10 flex justify-center pt-3 pb-2 px-4 pointer-events-none">
               <p className="text-xs sm:text-sm text-center text-foreground/90 bg-background/95 backdrop-blur rounded-lg px-3 py-2 shadow-md border border-border/50">
                 {isMobileOrTablet
-                  ? 'Haz doble toque para ocultar/mostrar la barra'
-                  : 'Haz doble clic para ocultar/mostrar la barra'}
+                  ? 'Doble toque izquierda/derecha: cambiar página · Centro: barra'
+                  : 'Doble clic izquierda/derecha: cambiar página · Centro: barra'}
               </p>
             </div>
           )}
@@ -754,7 +789,7 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
               ref={containerRef}
               className="relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 touch-manipulation bg-white dark:bg-black"
               onPointerDown={handlePointerDown}
-              onDoubleClick={!isMobileOrTablet && isFullscreen ? () => toggleFullscreenHeader() : undefined}
+              onDoubleClick={handleDoubleClick}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
