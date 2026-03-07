@@ -46,9 +46,11 @@ const SWIPE_THRESHOLD = 60;
 /** Double-tap (Pointer Events): ventana en ms y umbral de movimiento en px para considerar mismo punto */
 const DOUBLE_TAP_DELAY_MS = 450;
 const TAP_MOVEMENT_THRESHOLD_PX = 12;
-/** Double-tap/double-click: fracción del ancho para zona izquierda (anterior) y derecha (siguiente); centro = resto */
+/** Double-tap/double-click: fracción del ancho para zona izquierda (anterior) y derecha (siguiente) */
 const DOUBLE_TAP_LEFT_ZONE = 0.4;
 const DOUBLE_TAP_RIGHT_ZONE = 0.6;
+/** Parte superior de la pantalla (altura): doble toque/clic aquí muestra/oculta la barra de herramientas */
+const DOUBLE_TAP_TOP_ZONE = 0.2;
 /** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
 /** Ignore ResizeObserver updates smaller than this (e.g. scrollbar on theme change) so PDFContentBlock doesn't re-render and Document doesn't reset */
@@ -459,24 +461,29 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
     setFullscreenHeaderVisible(v => !v);
   }, []);
 
-  /** Doble toque/clic: izquierda = página anterior, derecha = siguiente, centro = toggle barra (solo fullscreen) */
+  /** Doble toque/clic: parte superior (20%) = mostrar/ocultar barra; izquierda = anterior, derecha = siguiente */
   const handleDoubleTapOrClick = useCallback(
-    (clientX: number, containerEl: HTMLDivElement | null) => {
+    (clientX: number, clientY: number, containerEl: HTMLDivElement | null) => {
       if (!containerEl) return;
       const rect = containerEl.getBoundingClientRect();
       const x = clientX - rect.left;
+      const y = clientY - rect.top;
       const w = rect.width;
-      if (w <= 0) return;
+      const h = rect.height;
+      if (w <= 0 || h <= 0) return;
+      const relY = y / h;
+      if (relY < DOUBLE_TAP_TOP_ZONE) {
+        toggleFullscreenHeader();
+        return;
+      }
       const rel = x / w;
       if (rel < DOUBLE_TAP_LEFT_ZONE) {
         goToPage(pageNumber - 1);
       } else if (rel > DOUBLE_TAP_RIGHT_ZONE) {
         goToPage(pageNumber + 1);
-      } else if (isFullscreen) {
-        toggleFullscreenHeader();
       }
     },
-    [goToPage, pageNumber, isFullscreen, toggleFullscreenHeader]
+    [goToPage, pageNumber, toggleFullscreenHeader]
   );
 
   /**
@@ -502,7 +509,7 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
           dx < TAP_MOVEMENT_THRESHOLD_PX &&
           dy < TAP_MOVEMENT_THRESHOLD_PX
         ) {
-          handleDoubleTapOrClick(x, containerEl);
+          handleDoubleTapOrClick(x, y, containerEl);
           lastTapRef.current = null;
           if (doubleTapTimeoutRef.current) {
             clearTimeout(doubleTapTimeoutRef.current);
@@ -526,7 +533,7 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (isMobileOrTablet) return;
-      handleDoubleTapOrClick(e.clientX, e.currentTarget);
+      handleDoubleTapOrClick(e.clientX, e.clientY, e.currentTarget);
     },
     [handleDoubleTapOrClick, isMobileOrTablet]
   );
@@ -672,8 +679,8 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
             <div className="absolute top-[40px] left-0 right-0 z-10 flex justify-center pt-3 pb-2 px-4 pointer-events-none">
               <p className="text-xs sm:text-sm text-center text-foreground/90 bg-background/95 backdrop-blur rounded-lg px-3 py-2 shadow-md border border-border/50">
                 {isMobileOrTablet
-                  ? 'Doble toque izquierda/derecha: cambiar página · Centro: barra'
-                  : 'Doble clic izquierda/derecha: cambiar página · Centro: barra'}
+                  ? 'Doble toque: arriba = barra · Izq/der = página'
+                  : 'Doble clic: arriba = barra · Izq/der = página'}
               </p>
             </div>
           )}
