@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
+  Search,
 } from 'lucide-react';
 import {
   DndContext,
@@ -78,6 +79,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+import { BookCard } from './BookCard';
 
 const SECTION_UNCATEGORIZED = 'uncategorized';
 
@@ -340,8 +342,18 @@ export function Library({
   onRefresh,
 }: LibraryProps) {
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const sections = getOrderedSections();
   const allFolders = [...sections.uncategorized, ...sections.categories.flatMap(c => c.folders)].map(f => ({ id: f.id, name: f.name }));
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedSearchQuery.length > 0;
+  const filteredBooks = isSearching
+    ? books.filter((book) =>
+        book.title.toLowerCase().includes(normalizedSearchQuery) ||
+        book.file_name.toLowerCase().includes(normalizedSearchQuery)
+      )
+    : [];
+  const folderNameById = new Map(allFolders.map((f) => [f.id, f.name]));
   const hasCategories = categories.length > 0;
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -851,6 +863,19 @@ export function Library({
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <div className="rounded-2xl border border-border bg-card/60 p-3 sm:p-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar libro en toda la biblioteca..."
+            className="pl-9"
+            aria-label="Buscar libro en toda la biblioteca"
+          />
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-serif font-semibold">My Reading Shelf</h1>
@@ -884,6 +909,41 @@ export function Library({
           )}
         </div>
       </div>
+
+      {isSearching && (
+        <div className="rounded-2xl border border-border bg-muted/20 dark:bg-muted/10 p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-serif text-lg font-semibold">Resultados</h2>
+            <span className="text-sm text-muted-foreground">
+              {filteredBooks.length} libro{filteredBooks.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          {filteredBooks.length > 0 ? (
+            <div className="space-y-2">
+              {filteredBooks.map((book) => (
+                <div key={book.id} className="space-y-1">
+                  <BookCard
+                    book={book}
+                    onToggleRead={onToggleBookRead}
+                    onSetState={onSetBookState}
+                    onRename={onRenameBook}
+                    onDelete={onDeleteBook}
+                    onProgressUpdate={onProgressUpdate}
+                    getBookUrl={getBookUrl}
+                    onMoveToFolder={onMoveBook}
+                    foldersForMove={allFolders.filter((f) => f.id !== book.folder_id)}
+                  />
+                  <p className="text-xs text-muted-foreground pl-3">
+                    Carpeta: {folderNameById.get(book.folder_id) ?? 'Sin carpeta'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No se encontraron libros para esta búsqueda.</p>
+          )}
+        </div>
+      )}
 
       <DndContext
         sensors={sensors}

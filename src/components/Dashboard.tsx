@@ -24,6 +24,7 @@ export function Dashboard({ stats, onNavigateToLibrary }: DashboardProps) {
       icon: BookOpen,
       color: 'text-primary',
       bgColor: 'bg-primary/10',
+      barGradient: 'from-primary/60 to-transparent',
     },
     {
       title: 'Leídos',
@@ -31,6 +32,7 @@ export function Dashboard({ stats, onNavigateToLibrary }: DashboardProps) {
       icon: BookCheck,
       color: 'text-success',
       bgColor: 'bg-success/10',
+      barGradient: 'from-success/60 to-transparent',
     },
     {
       title: 'Por Leer',
@@ -38,6 +40,7 @@ export function Dashboard({ stats, onNavigateToLibrary }: DashboardProps) {
       icon: Clock,
       color: 'text-muted-foreground',
       bgColor: 'bg-accent/20',
+      barGradient: 'from-muted-foreground/50 to-transparent',
     },
     {
       title: 'Carpetas',
@@ -45,6 +48,7 @@ export function Dashboard({ stats, onNavigateToLibrary }: DashboardProps) {
       icon: FolderOpen,
       color: 'text-muted-foreground',
       bgColor: 'bg-muted',
+      barGradient: 'from-muted-foreground/50 to-transparent',
     },
   ];
 
@@ -61,7 +65,7 @@ export function Dashboard({ stats, onNavigateToLibrary }: DashboardProps) {
           const card = (
             <Card
               key={stat.title}
-              className={`shadow-card hover:shadow-hover transition-shadow duration-300 ${isClickable ? 'cursor-pointer' : ''}`}
+              className={`group relative overflow-hidden shadow-card hover:shadow-hover transition-shadow duration-300 ${isClickable ? 'cursor-pointer' : ''}`}
               onClick={isClickable ? onNavigateToLibrary : undefined}
               role={isClickable ? 'button' : undefined}
               tabIndex={isClickable ? 0 : undefined}
@@ -78,6 +82,11 @@ export function Dashboard({ stats, onNavigateToLibrary }: DashboardProps) {
               <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
                 <div className="text-xl md:text-3xl font-serif font-bold">{stat.value}</div>
               </CardContent>
+              {/* Barra horizontal inferior con color difuminado al hover */}
+              <div
+                className={`absolute bottom-0 left-0 right-0 h-1.5 bg-gradient-to-t ${stat.barGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
+                aria-hidden
+              />
             </Card>
           );
           return card;

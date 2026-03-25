@@ -160,7 +160,8 @@ export function FolderCard({
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isDialogDraggingOver, setIsDialogDraggingOver] = useState(false);
+  const [isCardDraggingOver, setIsCardDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showBooksCollapse = books.length > bookLimit;
@@ -234,23 +235,44 @@ export function FolderCard({
     const list = Array.isArray(files) ? files : Array.from(files);
     const pdfs = list.filter(f => f.name.toLowerCase().endsWith('.pdf'));
     if (pdfs.length) setUploadFiles(prev => [...prev, ...pdfs]);
+    return pdfs.length;
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDialogDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDraggingOver(false);
+    setIsDialogDraggingOver(false);
     if (e.dataTransfer.files?.length) addPdfFiles(e.dataTransfer.files);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDialogDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
-    setIsDraggingOver(true);
+    setIsDialogDraggingOver(true);
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleDialogDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDraggingOver(false);
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDialogDraggingOver(false);
+  };
+
+  const handleCardDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsCardDraggingOver(false);
+    if (!e.dataTransfer.files?.length) return;
+
+    const added = addPdfFiles(e.dataTransfer.files);
+    if (added > 0) setIsUploadOpen(true);
+  };
+
+  const handleCardDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsCardDraggingOver(true);
+  };
+
+  const handleCardDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsCardDraggingOver(false);
   };
 
   const removeFile = (index: number) => {
@@ -330,6 +352,15 @@ export function FolderCard({
       {isExpanded && (
         <CardContent className="pt-0 space-y-3 animate-fade-in">
           <div className="border-t pt-4">
+            <div
+              onDrop={handleCardDrop}
+              onDragOver={handleCardDragOver}
+              onDragLeave={handleCardDragLeave}
+              className={`mb-3 flex items-center justify-center rounded-lg border-2 border-dashed p-4 text-sm text-muted-foreground transition-colors ${isCardDraggingOver ? 'border-primary bg-primary/10 text-foreground' : 'border-muted-foreground/30 hover:border-muted-foreground/50 hover:bg-muted/30'}`}
+              aria-label="Arrastra archivo aquí"
+            >
+              Arrastra archivo aquí
+            </div>
             <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="w-full gap-2">
@@ -359,10 +390,10 @@ export function FolderCard({
                     tabIndex={0}
                     onClick={() => fileInputRef.current?.click()}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
-                    onDrop={handleDrop}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 min-h-[120px] cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isDraggingOver ? 'border-primary bg-primary/10' : 'border-muted-foreground/30 hover:border-muted-foreground/50 hover:bg-muted/30'}`}
+                    onDrop={handleDialogDrop}
+                    onDragOver={handleDialogDragOver}
+                    onDragLeave={handleDialogDragLeave}
+                    className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 min-h-[120px] cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isDialogDraggingOver ? 'border-primary bg-primary/10' : 'border-muted-foreground/30 hover:border-muted-foreground/50 hover:bg-muted/30'}`}
                     aria-label="Arrastra PDF aquí o haz clic para seleccionar archivos"
                   >
                     <Upload className="w-8 h-8 text-muted-foreground" />
