@@ -161,7 +161,6 @@ export function FolderCard({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [isDialogDraggingOver, setIsDialogDraggingOver] = useState(false);
-  const [isCardDraggingOver, setIsCardDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showBooksCollapse = books.length > bookLimit;
@@ -235,7 +234,6 @@ export function FolderCard({
     const list = Array.isArray(files) ? files : Array.from(files);
     const pdfs = list.filter(f => f.name.toLowerCase().endsWith('.pdf'));
     if (pdfs.length) setUploadFiles(prev => [...prev, ...pdfs]);
-    return pdfs.length;
   };
 
   const handleDialogDrop = (e: React.DragEvent) => {
@@ -253,26 +251,6 @@ export function FolderCard({
   const handleDialogDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDialogDraggingOver(false);
-  };
-
-  const handleCardDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsCardDraggingOver(false);
-    if (!e.dataTransfer.files?.length) return;
-
-    const added = addPdfFiles(e.dataTransfer.files);
-    if (added > 0) setIsUploadOpen(true);
-  };
-
-  const handleCardDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    setIsCardDraggingOver(true);
-  };
-
-  const handleCardDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsCardDraggingOver(false);
   };
 
   const removeFile = (index: number) => {
@@ -352,15 +330,6 @@ export function FolderCard({
       {isExpanded && (
         <CardContent className="pt-0 space-y-3 animate-fade-in">
           <div className="border-t pt-4">
-            <div
-              onDrop={handleCardDrop}
-              onDragOver={handleCardDragOver}
-              onDragLeave={handleCardDragLeave}
-              className={`mb-3 flex items-center justify-center rounded-lg border-2 border-dashed p-4 text-sm text-muted-foreground transition-colors ${isCardDraggingOver ? 'border-primary bg-primary/10 text-foreground' : 'border-muted-foreground/30 hover:border-muted-foreground/50 hover:bg-muted/30'}`}
-              aria-label="Arrastra archivo aquí"
-            >
-              Arrastra archivo aquí
-            </div>
             <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="w-full gap-2">
