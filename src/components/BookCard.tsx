@@ -31,7 +31,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileText, MoreVertical, Trash2, Check, Clock, Pencil, CheckCheck, BookMarked, GripVertical, RotateCcw, FolderInput } from 'lucide-react';
+import { FileText, MoreVertical, Trash2, Check, Clock, Pencil, CheckCheck, BookMarked, GripVertical, RotateCcw, FolderInput, Download, WifiOff } from 'lucide-react';
 import PDFViewer from './PDFViewer';
 
 export interface BookCardProps {
@@ -43,18 +43,40 @@ export interface BookCardProps {
   onRename: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
+  onOpenBook?: (id: string) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
+  isOnline?: boolean;
+  isOfflineAvailable?: boolean;
+  onDownloadOffline?: (id: string) => Promise<boolean>;
+  onRemoveOffline?: (id: string) => Promise<boolean>;
   /** Mover libro a otra carpeta; si se pasa, se muestra la opción "Mover de carpeta" con la lista de carpetas */
   onMoveToFolder?: (bookId: string, targetFolderId: string) => Promise<boolean>;
   /** Lista de carpetas a las que se puede mover (ej. todas menos la actual); cada una { id, name } */
   foldersForMove?: { id: string; name: string }[];
 }
 
-export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRename, onDelete, onProgressUpdate, getBookUrl, onMoveToFolder, foldersForMove }: BookCardProps) {
+export function BookCard({
+  book,
+  dragHandleProps,
+  onToggleRead,
+  onSetState,
+  onRename,
+  onDelete,
+  onProgressUpdate,
+  onOpenBook,
+  getBookUrl,
+  isOnline = true,
+  isOfflineAvailable = false,
+  onDownloadOffline,
+  onRemoveOffline,
+  onMoveToFolder,
+  foldersForMove,
+}: BookCardProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const isViewerOpen = searchParams.get('book') === book.id;
 
   const openViewer = () => {
+    void onOpenBook?.(book.id);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set('tab', 'library');
@@ -166,6 +188,18 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
                 Pendiente
               </Badge>
             )}
+            {isOfflineAvailable && (
+              <Badge variant="outline" className="gap-1 text-xs w-fit border-primary/30 text-primary">
+                <Download className="w-3 h-3" />
+                Offline
+              </Badge>
+            )}
+            {!isOnline && !isOfflineAvailable && !book.file_path.startsWith('local://') && (
+              <Badge variant="outline" className="gap-1 text-xs w-fit">
+                <WifiOff className="w-3 h-3" />
+                Sin descarga offline
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -215,6 +249,21 @@ export function BookCard({ book, dragHandleProps, onToggleRead, onSetState, onRe
                     ))}
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
+              )}
+              {onDownloadOffline && !book.file_path.startsWith('local://') && !isOfflineAvailable && (
+                <DropdownMenuItem
+                  onSelect={() => void onDownloadOffline(book.id)}
+                  disabled={!isOnline}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Descargar para offline
+                </DropdownMenuItem>
+              )}
+              {onRemoveOffline && !book.file_path.startsWith('local://') && isOfflineAvailable && (
+                <DropdownMenuItem onSelect={() => void onRemoveOffline(book.id)}>
+                  <WifiOff className="w-4 h-4 mr-2" />
+                  Quitar de offline
+                </DropdownMenuItem>
               )}
               <DropdownMenuItem
                 onSelect={() => setTimeout(() => setIsDeleteConfirmOpen(true), 0)}

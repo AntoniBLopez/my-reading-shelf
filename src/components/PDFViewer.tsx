@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useTheme } from 'next-themes';
 import { Book } from '@/types/library';
 import { Button } from '@/components/ui/button';
@@ -29,16 +30,10 @@ import { cn } from '@/lib/utils';
 import 'react-pdf/src/Page/AnnotationLayer.css';
 import 'react-pdf/src/Page/TextLayer.css';
 
-// Configure PDF.js worker (use https so it works in all contexts)
-const pdfjsBase = `https://unpkg.com/pdfjs-dist@${pdfjs.version}`;
-pdfjs.GlobalWorkerOptions.workerSrc = `${pdfjsBase}/build/pdf.worker.min.mjs`;
+// Keep PDF worker local so viewer works without internet.
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
-// Enable JPEG2000 (JPX) decoding: worker must load openjpeg.wasm from the same origin/CDN
-const pdfDocOptions = {
-  useWorkerFetch: true,
-  wasmUrl: `${pdfjsBase}/wasm/`,
-  iccUrl: `${pdfjsBase}/iccs/`,
-};
+const pdfDocOptions = {};
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;

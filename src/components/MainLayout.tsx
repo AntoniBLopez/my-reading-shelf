@@ -108,7 +108,12 @@ export function MainLayout() {
     deleteBook,
     getBooksByFolder,
     updateBookProgress,
+    markBookViewed,
     getBookUrl,
+    isOnline,
+    offlineBookIds,
+    downloadBookForOffline,
+    removeBookOffline,
     refreshData,
   } = useLibrary();
 
@@ -179,8 +184,13 @@ export function MainLayout() {
               onRenameBook={updateBook}
               onDeleteBook={deleteBook}
               onProgressUpdate={updateBookProgress}
+              onBookViewed={markBookViewed}
               getBooksByFolder={getBooksByFolder}
               getBookUrl={getBookUrl}
+              isOnline={isOnline}
+              offlineBookIds={offlineBookIds}
+              onDownloadBookOffline={downloadBookForOffline}
+              onRemoveBookOffline={removeBookOffline}
               onRefresh={async () => { await refreshData(); }}
               openBookId={openBookId}
             />

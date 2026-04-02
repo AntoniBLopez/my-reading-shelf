@@ -23,6 +23,7 @@ export type Database = {
           folder_id: string
           id: string
           is_read: boolean
+          last_viewed_at: string | null
           position: number
           read_at: string | null
           title: string
@@ -38,6 +39,7 @@ export type Database = {
           folder_id: string
           id?: string
           is_read?: boolean
+          last_viewed_at?: string | null
           position?: number
           read_at?: string | null
           title: string
@@ -53,6 +55,7 @@ export type Database = {
           folder_id?: string
           id?: string
           is_read?: boolean
+          last_viewed_at?: string | null
           position?: number
           read_at?: string | null
           title?: string

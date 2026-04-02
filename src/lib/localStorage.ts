@@ -88,7 +88,7 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function savePdfBlob(id: string, file: File): Promise<void> {
+export async function savePdfBlob(id: string, file: Blob): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -116,6 +116,36 @@ export async function getPdfBlobUrl(id: string): Promise<string | null> {
       } else {
         resolve(null);
       }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getPdfBlob(id: string): Promise<Blob | null> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.get(id);
+    req.onsuccess = () => {
+      db.close();
+      const row = req.result;
+      if (row?.blob instanceof Blob) resolve(row.blob);
+      else resolve(null);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function hasPdfBlob(id: string): Promise<boolean> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.getKey(id);
+    req.onsuccess = () => {
+      db.close();
+      resolve(req.result != null);
     };
     req.onerror = () => reject(req.error);
   });

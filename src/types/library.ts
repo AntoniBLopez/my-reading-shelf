@@ -34,6 +34,8 @@ export interface Book {
   read_at: string | null;
   current_page: number;
   total_pages: number;
+  /** Última fecha de apertura para accesos rápidos entre dispositivos. */
+  last_viewed_at?: string | null;
   /** Orden dentro de la carpeta (persistido en DB con Supabase). */
   position?: number;
   created_at: string;

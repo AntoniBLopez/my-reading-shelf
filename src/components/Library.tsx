@@ -107,8 +107,13 @@ interface LibraryProps {
   onRenameBook: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
   onDeleteBook: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
+  onBookViewed?: (id: string) => Promise<boolean>;
   getBooksByFolder: (folderId: string) => Book[];
   getBookUrl: (filePath: string) => Promise<string | null>;
+  isOnline?: boolean;
+  offlineBookIds?: Set<string>;
+  onDownloadBookOffline?: (id: string) => Promise<boolean>;
+  onRemoveBookOffline?: (id: string) => Promise<boolean>;
   onRefresh?: () => Promise<void>;
 }
 
@@ -124,7 +129,12 @@ function SortableFolderCard({
   onRenameBook,
   onDeleteBook,
   onProgressUpdate,
+  onBookViewed,
   getBookUrl,
+  isOnline,
+  offlineBookIds,
+  onDownloadBookOffline,
+  onRemoveBookOffline,
   onReorderBooks,
   onMoveBook,
   allFolders,
@@ -142,7 +152,12 @@ function SortableFolderCard({
   onRenameBook: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
   onDeleteBook: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
+  onBookViewed?: (id: string) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
+  isOnline?: boolean;
+  offlineBookIds?: Set<string>;
+  onDownloadBookOffline?: (id: string) => Promise<boolean>;
+  onRemoveBookOffline?: (id: string) => Promise<boolean>;
   onReorderBooks: (folderId: string, fromIndex: number, toIndex: number) => void;
   onMoveBook?: (bookId: string, targetFolderId: string) => Promise<boolean>;
   allFolders?: { id: string; name: string }[];
@@ -190,7 +205,12 @@ function SortableFolderCard({
             onRenameBook={onRenameBook}
             onDeleteBook={onDeleteBook}
             onProgressUpdate={onProgressUpdate}
+            onBookViewed={onBookViewed}
             getBookUrl={getBookUrl}
+            isOnline={isOnline}
+            offlineBookIds={offlineBookIds}
+            onDownloadBookOffline={onDownloadBookOffline}
+            onRemoveBookOffline={onRemoveBookOffline}
             onReorderBooks={onReorderBooks}
             onMoveBook={onMoveBook}
             allFolders={allFolders}
@@ -337,8 +357,13 @@ export function Library({
   onRenameBook,
   onDeleteBook,
   onProgressUpdate,
+  onBookViewed,
   getBooksByFolder,
   getBookUrl,
+  isOnline,
+  offlineBookIds,
+  onDownloadBookOffline,
+  onRemoveBookOffline,
   onRefresh,
 }: LibraryProps) {
   const [refreshing, setRefreshing] = useState(false);
@@ -354,6 +379,10 @@ export function Library({
       )
     : [];
   const folderNameById = new Map(allFolders.map((f) => [f.id, f.name]));
+  const lastViewedBooks = [...books]
+    .filter((book) => Boolean(book.last_viewed_at))
+    .sort((a, b) => new Date(b.last_viewed_at ?? 0).getTime() - new Date(a.last_viewed_at ?? 0).getTime())
+    .slice(0, 2);
   const hasCategories = categories.length > 0;
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -667,7 +696,12 @@ export function Library({
                 onRenameBook={onRenameBook}
                 onDeleteBook={onDeleteBook}
                 onProgressUpdate={onProgressUpdate}
+                onBookViewed={onBookViewed}
                 getBookUrl={getBookUrl}
+                isOnline={isOnline}
+                offlineBookIds={offlineBookIds}
+                onDownloadBookOffline={onDownloadBookOffline}
+                onRemoveBookOffline={onRemoveBookOffline}
                 onReorderBooks={onReorderBooks}
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
@@ -698,7 +732,12 @@ export function Library({
                       onRenameBook={onRenameBook}
                       onDeleteBook={onDeleteBook}
                       onProgressUpdate={onProgressUpdate}
+                      onBookViewed={onBookViewed}
                       getBookUrl={getBookUrl}
+                      isOnline={isOnline}
+                      offlineBookIds={offlineBookIds}
+                      onDownloadBookOffline={onDownloadBookOffline}
+                      onRemoveBookOffline={onRemoveBookOffline}
                 onReorderBooks={onReorderBooks}
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
@@ -741,7 +780,12 @@ export function Library({
                   onRenameBook={onRenameBook}
                   onDeleteBook={onDeleteBook}
                   onProgressUpdate={onProgressUpdate}
+                  onBookViewed={onBookViewed}
                   getBookUrl={getBookUrl}
+                  isOnline={isOnline}
+                  offlineBookIds={offlineBookIds}
+                  onDownloadBookOffline={onDownloadBookOffline}
+                  onRemoveBookOffline={onRemoveBookOffline}
                 onReorderBooks={onReorderBooks}
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
@@ -772,7 +816,12 @@ export function Library({
                         onRenameBook={onRenameBook}
                         onDeleteBook={onDeleteBook}
                         onProgressUpdate={onProgressUpdate}
+                        onBookViewed={onBookViewed}
                         getBookUrl={getBookUrl}
+                isOnline={isOnline}
+                offlineBookIds={offlineBookIds}
+                onDownloadBookOffline={onDownloadBookOffline}
+                onRemoveBookOffline={onRemoveBookOffline}
                 onReorderBooks={onReorderBooks}
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
@@ -863,6 +912,42 @@ export function Library({
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {lastViewedBooks.length > 0 && (
+        <div className="rounded-2xl border border-border bg-muted/20 dark:bg-muted/10 p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-serif text-lg font-semibold">Last view</h2>
+            <span className="text-sm text-muted-foreground">
+              {lastViewedBooks.length} acceso{lastViewedBooks.length !== 1 ? 's' : ''} rápido{lastViewedBooks.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {lastViewedBooks.map((book) => (
+              <div key={`last-view-${book.id}`} className="space-y-1">
+                <BookCard
+                  book={book}
+                  onToggleRead={onToggleBookRead}
+                  onSetState={onSetBookState}
+                  onRename={onRenameBook}
+                  onDelete={onDeleteBook}
+                  onProgressUpdate={onProgressUpdate}
+                  onOpenBook={onBookViewed}
+                  getBookUrl={getBookUrl}
+                  isOnline={isOnline}
+                  isOfflineAvailable={offlineBookIds?.has(book.id)}
+                  onDownloadOffline={onDownloadBookOffline}
+                  onRemoveOffline={onRemoveBookOffline}
+                  onMoveToFolder={onMoveBook}
+                  foldersForMove={allFolders.filter((f) => f.id !== book.folder_id)}
+                />
+                <p className="text-xs text-muted-foreground pl-3">
+                  Carpeta: {folderNameById.get(book.folder_id) ?? 'Sin carpeta'}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-border bg-card/60 p-3 sm:p-4">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -929,7 +1014,12 @@ export function Library({
                     onRename={onRenameBook}
                     onDelete={onDeleteBook}
                     onProgressUpdate={onProgressUpdate}
+                    onOpenBook={onBookViewed}
                     getBookUrl={getBookUrl}
+                    isOnline={isOnline}
+                    isOfflineAvailable={offlineBookIds?.has(book.id)}
+                    onDownloadOffline={onDownloadBookOffline}
+                    onRemoveOffline={onRemoveBookOffline}
                     onMoveToFolder={onMoveBook}
                     foldersForMove={allFolders.filter((f) => f.id !== book.folder_id)}
                   />
@@ -1021,7 +1111,12 @@ export function Library({
                           onRenameBook={onRenameBook}
                           onDeleteBook={onDeleteBook}
                           onProgressUpdate={onProgressUpdate}
+                          onBookViewed={onBookViewed}
                           getBookUrl={getBookUrl}
+                isOnline={isOnline}
+                offlineBookIds={offlineBookIds}
+                onDownloadBookOffline={onDownloadBookOffline}
+                onRemoveBookOffline={onRemoveBookOffline}
                 onReorderBooks={onReorderBooks}
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
@@ -1069,7 +1164,12 @@ export function Library({
                   onRenameBook={onRenameBook}
                   onDeleteBook={onDeleteBook}
                   onProgressUpdate={onProgressUpdate}
+                  onBookViewed={onBookViewed}
                   getBookUrl={getBookUrl}
+                  isOnline={isOnline}
+                  offlineBookIds={offlineBookIds}
+                  onDownloadBookOffline={onDownloadBookOffline}
+                  onRemoveBookOffline={onRemoveBookOffline}
                   onMoveBook={onMoveBook}
                   allFolders={allFolders}
                   onOpenCreateCategory={handleOpenCreateCategory}

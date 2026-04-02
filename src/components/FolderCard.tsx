@@ -70,7 +70,12 @@ interface FolderCardProps {
   onRenameBook: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
   onDeleteBook: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
+  onBookViewed?: (id: string) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
+  isOnline?: boolean;
+  offlineBookIds?: Set<string>;
+  onDownloadBookOffline?: (id: string) => Promise<boolean>;
+  onRemoveBookOffline?: (id: string) => Promise<boolean>;
   onReorderBooks?: (folderId: string, fromIndex: number, toIndex: number) => void;
   /** Mover libro a otra carpeta (desde menú 3 puntos) */
   onMoveBook?: (bookId: string, targetFolderId: string) => Promise<boolean>;
@@ -90,7 +95,12 @@ function SortableBookCard({
   onRenameBook,
   onDeleteBook,
   onProgressUpdate,
+  onBookViewed,
   getBookUrl,
+  isOnline,
+  offlineBookIds,
+  onDownloadBookOffline,
+  onRemoveBookOffline,
   onMoveToFolder,
   foldersForMove,
 }: {
@@ -101,7 +111,12 @@ function SortableBookCard({
   onRenameBook: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
   onDeleteBook: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
+  onBookViewed?: (id: string) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
+  isOnline?: boolean;
+  offlineBookIds?: Set<string>;
+  onDownloadBookOffline?: (id: string) => Promise<boolean>;
+  onRemoveBookOffline?: (id: string) => Promise<boolean>;
   onMoveToFolder?: (bookId: string, targetFolderId: string) => Promise<boolean>;
   foldersForMove?: { id: string; name: string }[];
 }) {
@@ -119,7 +134,12 @@ function SortableBookCard({
         onRename={onRenameBook}
         onDelete={onDeleteBook}
         onProgressUpdate={onProgressUpdate}
+        onOpenBook={onBookViewed}
         getBookUrl={getBookUrl}
+        isOnline={isOnline}
+        isOfflineAvailable={offlineBookIds?.has(book.id)}
+        onDownloadOffline={onDownloadBookOffline}
+        onRemoveOffline={onRemoveBookOffline}
         onMoveToFolder={onMoveToFolder}
         foldersForMove={foldersForMove}
       />
@@ -139,7 +159,12 @@ export function FolderCard({
   onRenameBook,
   onDeleteBook,
   onProgressUpdate,
+  onBookViewed,
   getBookUrl,
+  isOnline,
+  offlineBookIds,
+  onDownloadBookOffline,
+  onRemoveBookOffline,
   onReorderBooks,
   onMoveBook,
   allFolders,
@@ -433,7 +458,12 @@ export function FolderCard({
                       onRenameBook={onRenameBook}
                       onDeleteBook={onDeleteBook}
                       onProgressUpdate={onProgressUpdate}
+                      onBookViewed={onBookViewed}
                       getBookUrl={getBookUrl}
+                      isOnline={isOnline}
+                      offlineBookIds={offlineBookIds}
+                      onDownloadBookOffline={onDownloadBookOffline}
+                      onRemoveBookOffline={onRemoveBookOffline}
                       onMoveToFolder={onMoveBook}
                       foldersForMove={foldersForMove}
                     />
@@ -453,7 +483,12 @@ export function FolderCard({
                             onRenameBook={onRenameBook}
                             onDeleteBook={onDeleteBook}
                             onProgressUpdate={onProgressUpdate}
+                            onBookViewed={onBookViewed}
                             getBookUrl={getBookUrl}
+                            isOnline={isOnline}
+                            offlineBookIds={offlineBookIds}
+                            onDownloadBookOffline={onDownloadBookOffline}
+                            onRemoveBookOffline={onRemoveBookOffline}
                             onMoveToFolder={onMoveBook}
                             foldersForMove={foldersForMove}
                           />
@@ -474,7 +509,12 @@ export function FolderCard({
                       onRename={onRenameBook}
                       onDelete={onDeleteBook}
                       onProgressUpdate={onProgressUpdate}
+                      onOpenBook={onBookViewed}
                       getBookUrl={getBookUrl}
+                      isOnline={isOnline}
+                      isOfflineAvailable={offlineBookIds?.has(book.id)}
+                      onDownloadOffline={onDownloadBookOffline}
+                      onRemoveOffline={onRemoveBookOffline}
                       onMoveToFolder={onMoveBook}
                       foldersForMove={foldersForMove}
                     />
@@ -493,7 +533,12 @@ export function FolderCard({
                             onRename={onRenameBook}
                             onDelete={onDeleteBook}
                             onProgressUpdate={onProgressUpdate}
+                            onOpenBook={onBookViewed}
                             getBookUrl={getBookUrl}
+                            isOnline={isOnline}
+                            isOfflineAvailable={offlineBookIds?.has(book.id)}
+                            onDownloadOffline={onDownloadBookOffline}
+                            onRemoveOffline={onRemoveBookOffline}
                             onMoveToFolder={onMoveBook}
                             foldersForMove={foldersForMove}
                           />

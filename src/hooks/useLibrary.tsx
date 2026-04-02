@@ -15,6 +15,7 @@ import {
   type FolderLayout,
   savePdfBlob,
   getPdfBlobUrl,
+  hasPdfBlob,
   deletePdfBlob,
   LOCAL_USER_ID,
 } from '@/lib/localStorage';
@@ -26,6 +27,10 @@ export function useLibrary() {
   const [categories, setCategories] = useState<FolderCategory[]>([]);
   const [layout, setLayout] = useState<FolderLayout>(() => getLocalFolderLayout());
   const [loading, setLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(
+    typeof window === 'undefined' ? true : window.navigator.onLine
+  );
+  const [offlineBookIds, setOfflineBookIds] = useState<Set<string>>(new Set());
 
   const isLocal = !user || !isSupabaseConfigured() || user.id === LOCAL_USER_ID;
   const pendingDeleteRef = useRef<{ id: string; book: Book; timeout: ReturnType<typeof setTimeout>; isLocal: boolean } | null>(null);
@@ -38,6 +43,39 @@ export function useLibrary() {
   } | null>(null);
   const hasLoadedOnceRef = useRef(false);
   const lastUserIdRef = useRef<string | null>(null);
+  const remotePdfCacheKey = (filePath: string) => `remote:${filePath}`;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshOfflineAvailability = async () => {
+      const entries = await Promise.all(
+        books.map(async (book) => {
+          if (book.file_path.startsWith('local://')) return [book.id, true] as const;
+          const cached = await hasPdfBlob(remotePdfCacheKey(book.file_path));
+          return [book.id, cached] as const;
+        })
+      );
+      if (cancelled) return;
+      const next = new Set(entries.filter(([, available]) => available).map(([id]) => id));
+      setOfflineBookIds(next);
+    };
+    void refreshOfflineAvailability();
+    return () => {
+      cancelled = true;
+    };
+  }, [books]);
 
   const fetchFolders = useCallback(async () => {
     if (!user) return;
@@ -79,6 +117,7 @@ export function useLibrary() {
         current_page: (book as any).current_page ?? 0,
         total_pages: (book as any).total_pages ?? 0,
         position: (book as any).position ?? 0,
+        last_viewed_at: (book as any).last_viewed_at ?? null,
       })) as Book[];
       setBooks(booksWithProgress);
     }
@@ -455,18 +494,97 @@ export function useLibrary() {
     return true;
   };
 
+  const markBookViewed = async (id: string) => {
+    const now = new Date().toISOString();
+    if (isLocal) {
+      setBooks(prev => prev.map(b => (b.id === id ? { ...b, last_viewed_at: now } : b)));
+      return true;
+    }
+    if (!supabase) return false;
+    const { error } = await supabase
+      .from('books')
+      .update({ last_viewed_at: now })
+      .eq('id', id);
+    if (error) {
+      console.error('Error updating last viewed:', error);
+      return false;
+    }
+    setBooks(prev => prev.map(b => (b.id === id ? { ...b, last_viewed_at: now } : b)));
+    return true;
+  };
+
   const getBookUrl = async (filePath: string): Promise<string | null> => {
     if (filePath.startsWith('local://')) {
       const id = filePath.replace('local://', '');
       return getPdfBlobUrl(id);
     }
+    const cacheKey = remotePdfCacheKey(filePath);
+    const cachedUrl = await getPdfBlobUrl(cacheKey);
+    if (cachedUrl) return cachedUrl;
+    if (!isOnline) return null;
     if (!supabase) return null;
     const { data, error } = await supabase.storage.from('pdfs').createSignedUrl(filePath, 3600);
     if (error) {
       console.error('Error getting signed URL:', error);
       return null;
     }
+    // Cache remote PDFs for later offline reading.
+    try {
+      const response = await fetch(data.signedUrl);
+      if (response.ok) {
+        const blob = await response.blob();
+        await savePdfBlob(cacheKey, blob);
+      }
+    } catch (err) {
+      console.warn('No se pudo cachear el PDF para modo offline:', err);
+    }
     return data.signedUrl;
+  };
+
+  const downloadBookForOffline = async (bookId: string): Promise<boolean> => {
+    const book = books.find((b) => b.id === bookId);
+    if (!book) return false;
+    if (book.file_path.startsWith('local://')) return true;
+    if (!isOnline || !supabase) {
+      toast.error('Necesitas conexión para descargar este libro offline');
+      return false;
+    }
+    const { data, error } = await supabase.storage.from('pdfs').createSignedUrl(book.file_path, 3600);
+    if (error) {
+      toast.error('No se pudo preparar la descarga offline');
+      console.error(error);
+      return false;
+    }
+    try {
+      const response = await fetch(data.signedUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      await savePdfBlob(remotePdfCacheKey(book.file_path), blob);
+      setOfflineBookIds((prev) => new Set(prev).add(book.id));
+      toast.success('Libro disponible offline');
+      return true;
+    } catch (err) {
+      toast.error('Error al descargar libro para offline');
+      console.error(err);
+      return false;
+    }
+  };
+
+  const removeBookOffline = async (bookId: string): Promise<boolean> => {
+    const book = books.find((b) => b.id === bookId);
+    if (!book) return false;
+    if (book.file_path.startsWith('local://')) {
+      toast.message('Este libro ya es local de este dispositivo');
+      return false;
+    }
+    await deletePdfBlob(remotePdfCacheKey(book.file_path));
+    setOfflineBookIds((prev) => {
+      const next = new Set(prev);
+      next.delete(book.id);
+      return next;
+    });
+    toast.success('Libro eliminado del almacenamiento offline');
+    return true;
   };
 
   const deleteBook = async (id: string) => {
@@ -483,6 +601,7 @@ export function useLibrary() {
         await deletePdfBlob(pendingId);
         return;
       }
+      await deletePdfBlob(remotePdfCacheKey(pendingBook.file_path));
       if (!supabase) return;
       try {
         const { error: storageError } = await supabase.storage.from('pdfs').remove([pendingBook.file_path]);
@@ -865,6 +984,8 @@ export function useLibrary() {
     loading,
     stats,
     isLocal,
+    isOnline,
+    offlineBookIds,
     createFolder,
     updateFolder,
     deleteFolder,
@@ -884,7 +1005,10 @@ export function useLibrary() {
     deleteBook,
     getBooksByFolder,
     updateBookProgress,
+    markBookViewed,
     getBookUrl,
+    downloadBookForOffline,
+    removeBookOffline,
     refreshData: () => Promise.all([fetchFolders(), fetchBooks(), fetchCategories()]),
   };
 }
