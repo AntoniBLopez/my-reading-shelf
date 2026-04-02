@@ -4,6 +4,7 @@ const FOLDERS_KEY = 'reading-shelf-folders';
 const BOOKS_KEY = 'reading-shelf-books';
 const CATEGORIES_KEY = 'reading-shelf-categories';
 const LAYOUT_KEY = 'reading-shelf-layout';
+const OFFLINE_BOOK_UPDATES_KEY = 'reading-shelf-offline-book-updates';
 const DB_NAME = 'reading-shelf-pdfs';
 const STORE_NAME = 'blobs';
 
@@ -12,6 +13,16 @@ export interface FolderLayout {
   categoryOrder: string[];
   /** Por carpeta: orden de ids de libros (solo en app/localStorage). */
   bookOrder: Record<string, string[]>;
+}
+
+export interface PendingBookUpdate {
+  id: string;
+  user_id: string;
+  book_id: string;
+  updates: Partial<
+    Pick<Book, 'title' | 'is_read' | 'read_at' | 'current_page' | 'total_pages' | 'last_viewed_at' | 'folder_id' | 'position'>
+  >;
+  created_at: string;
 }
 
 export function getLocalFolders(): Folder[] {
@@ -75,6 +86,57 @@ export function getLocalBooks(): Book[] {
 
 export function setLocalBooks(books: Book[]): void {
   localStorage.setItem(BOOKS_KEY, JSON.stringify(books));
+}
+
+export function getPendingBookUpdates(userId?: string): PendingBookUpdate[] {
+  try {
+    const raw = localStorage.getItem(OFFLINE_BOOK_UPDATES_KEY);
+    const data = raw ? (JSON.parse(raw) as PendingBookUpdate[]) : [];
+    if (!userId) return data;
+    return data.filter((item) => item.user_id === userId);
+  } catch {
+    return [];
+  }
+}
+
+export function setPendingBookUpdates(queue: PendingBookUpdate[]): void {
+  localStorage.setItem(OFFLINE_BOOK_UPDATES_KEY, JSON.stringify(queue));
+}
+
+export function enqueuePendingBookUpdate(item: Omit<PendingBookUpdate, 'id' | 'created_at'>): PendingBookUpdate {
+  const all = getPendingBookUpdates();
+  const existingIndex = all.findIndex(
+    (q) => q.user_id === item.user_id && q.book_id === item.book_id
+  );
+  const now = new Date().toISOString();
+
+  if (existingIndex >= 0) {
+    const updated: PendingBookUpdate = {
+      ...all[existingIndex],
+      updates: { ...all[existingIndex].updates, ...item.updates },
+      created_at: now,
+    };
+    all[existingIndex] = updated;
+    setPendingBookUpdates(all);
+    return updated;
+  }
+
+  const created: PendingBookUpdate = {
+    id: crypto.randomUUID(),
+    user_id: item.user_id,
+    book_id: item.book_id,
+    updates: item.updates,
+    created_at: now,
+  };
+  setPendingBookUpdates([...all, created]);
+  return created;
+}
+
+export function removePendingBookUpdates(ids: string[]): void {
+  if (!ids.length) return;
+  const idSet = new Set(ids);
+  const all = getPendingBookUpdates();
+  setPendingBookUpdates(all.filter((q) => !idSet.has(q.id)));
 }
 
 function openDB(): Promise<IDBDatabase> {

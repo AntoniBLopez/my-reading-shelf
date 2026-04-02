@@ -17,6 +17,9 @@ import {
   getPdfBlobUrl,
   hasPdfBlob,
   deletePdfBlob,
+  getPendingBookUpdates,
+  enqueuePendingBookUpdate,
+  removePendingBookUpdates,
   LOCAL_USER_ID,
 } from '@/lib/localStorage';
 
@@ -76,6 +79,51 @@ export function useLibrary() {
       cancelled = true;
     };
   }, [books]);
+
+  const enqueueRemoteBookUpdate = useCallback(
+    (
+      bookId: string,
+      updates: Partial<
+        Pick<Book, 'title' | 'is_read' | 'read_at' | 'current_page' | 'total_pages' | 'last_viewed_at' | 'folder_id' | 'position'>
+      >,
+      notify = true
+    ) => {
+      if (!user) return;
+      enqueuePendingBookUpdate({ user_id: user.id, book_id: bookId, updates });
+      if (notify) toast.message('Cambio guardado offline. Se sincronizará al reconectar.');
+    },
+    [user]
+  );
+
+  const processPendingBookUpdates = useCallback(async () => {
+    if (!user || isLocal || !isOnline || !supabase) return;
+    const pending = getPendingBookUpdates(user.id);
+    if (!pending.length) return;
+
+    const processedIds: string[] = [];
+    for (const item of pending) {
+      const { error } = await supabase
+        .from('books')
+        .update(item.updates)
+        .eq('id', item.book_id)
+        .eq('user_id', user.id);
+      if (error) {
+        console.error('Error syncing offline book update:', error);
+        break;
+      }
+      processedIds.push(item.id);
+    }
+
+    if (processedIds.length) {
+      removePendingBookUpdates(processedIds);
+      await fetchBooks();
+      toast.success(
+        processedIds.length === 1
+          ? '1 cambio offline sincronizado'
+          : `${processedIds.length} cambios offline sincronizados`
+      );
+    }
+  }, [user, isLocal, isOnline, fetchBooks]);
 
   const fetchFolders = useCallback(async () => {
     if (!user) return;
@@ -182,6 +230,11 @@ export function useLibrary() {
       hasLoadedOnceRef.current = false;
     }
   }, [user, isLocal, fetchFolders, fetchBooks, fetchCategories]);
+
+  useEffect(() => {
+    if (!user || isLocal || !isOnline) return;
+    void processPendingBookUpdates();
+  }, [user, isLocal, isOnline, processPendingBookUpdates]);
 
   const createFolder = async (name: string, description?: string) => {
     if (!user) return null;
@@ -431,6 +484,11 @@ export function useLibrary() {
       toast.success(state === 'Leído' ? '¡Libro marcado como leído!' : state === 'Pendiente' ? 'Libro marcado como pendiente' : 'Libro en progreso');
       return true;
     }
+    if (!isOnline) {
+      setBooks(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
+      enqueueRemoteBookUpdate(id, updates);
+      return true;
+    }
     if (!supabase) return false;
     const { error } = await supabase.from('books').update(updates).eq('id', id);
     if (error) {
@@ -454,6 +512,11 @@ export function useLibrary() {
       setLocalBooks(next);
       setBooks(next);
       toast.success('Libro renombrado');
+      return true;
+    }
+    if (!isOnline) {
+      setBooks(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
+      enqueueRemoteBookUpdate(id, updates);
       return true;
     }
     if (!supabase) return false;
@@ -484,6 +547,11 @@ export function useLibrary() {
       setBooks(next);
       return true;
     }
+    if (!isOnline) {
+      setBooks(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
+      enqueueRemoteBookUpdate(id, updates, false);
+      return true;
+    }
     if (!supabase) return false;
     const { error } = await supabase.from('books').update(updates).eq('id', id);
     if (error) {
@@ -498,6 +566,11 @@ export function useLibrary() {
     const now = new Date().toISOString();
     if (isLocal) {
       setBooks(prev => prev.map(b => (b.id === id ? { ...b, last_viewed_at: now } : b)));
+      return true;
+    }
+    if (!isOnline) {
+      setBooks(prev => prev.map(b => (b.id === id ? { ...b, last_viewed_at: now } : b)));
+      enqueueRemoteBookUpdate(id, { last_viewed_at: now }, false);
       return true;
     }
     if (!supabase) return false;
@@ -590,6 +663,10 @@ export function useLibrary() {
   const deleteBook = async (id: string) => {
     const book = books.find(b => b.id === id);
     if (!book) return false;
+    if (!isLocal && !isOnline) {
+      toast.error('Necesitas conexión para eliminar este libro');
+      return false;
+    }
 
     const runPendingDelete = async () => {
       const pending = pendingDeleteRef.current;
@@ -719,6 +796,9 @@ export function useLibrary() {
       const next = getLocalBooks().map(b => (b.id === bookId ? { ...b, ...updates } : b));
       setLocalBooks(next);
       setBooks(next);
+    } else if (!isOnline) {
+      setBooks(prev => prev.map(b => (b.id === bookId ? { ...b, ...updates } : b)));
+      enqueueRemoteBookUpdate(bookId, updates);
     } else if (supabase) {
       const { error } = await supabase.from('books').update(updates).eq('id', bookId);
       if (error) {
