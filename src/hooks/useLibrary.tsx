@@ -112,36 +112,6 @@ export function useLibrary() {
     [user]
   );
 
-  const processPendingBookUpdates = useCallback(async () => {
-    if (!user || isLocal || !isOnline || !supabase) return;
-    const pending = getPendingBookUpdates(user.id);
-    if (!pending.length) return;
-
-    const processedIds: string[] = [];
-    for (const item of pending) {
-      const { error } = await supabase
-        .from('books')
-        .update(item.updates)
-        .eq('id', item.book_id)
-        .eq('user_id', user.id);
-      if (error) {
-        console.error('Error syncing offline book update:', error);
-        break;
-      }
-      processedIds.push(item.id);
-    }
-
-    if (processedIds.length) {
-      removePendingBookUpdates(processedIds);
-      await fetchBooks();
-      toast.success(
-        processedIds.length === 1
-          ? '1 cambio offline sincronizado'
-          : `${processedIds.length} cambios offline sincronizados`
-      );
-    }
-  }, [user, isLocal, isOnline, fetchBooks]);
-
   const fetchFolders = useCallback(async () => {
     if (!user) return;
     if (isLocal) {
@@ -187,6 +157,36 @@ export function useLibrary() {
       setBooks(booksWithProgress);
     }
   }, [user, isLocal]);
+
+  const processPendingBookUpdates = useCallback(async () => {
+    if (!user || isLocal || !isOnline || !supabase) return;
+    const pending = getPendingBookUpdates(user.id);
+    if (!pending.length) return;
+
+    const processedIds: string[] = [];
+    for (const item of pending) {
+      const { error } = await supabase
+        .from('books')
+        .update(item.updates)
+        .eq('id', item.book_id)
+        .eq('user_id', user.id);
+      if (error) {
+        console.error('Error syncing offline book update:', error);
+        break;
+      }
+      processedIds.push(item.id);
+    }
+
+    if (processedIds.length) {
+      removePendingBookUpdates(processedIds);
+      await fetchBooks();
+      toast.success(
+        processedIds.length === 1
+          ? '1 cambio offline sincronizado'
+          : `${processedIds.length} cambios offline sincronizados`
+      );
+    }
+  }, [user, isLocal, isOnline, fetchBooks]);
 
   const fetchCategories = useCallback(async () => {
     if (!user) return;
