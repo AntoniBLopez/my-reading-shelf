@@ -41,6 +41,7 @@ const pdfDocOptions = {};
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const SWIPE_THRESHOLD = 60;
+const PDF_LOAD_TIMEOUT_MS = 10000;
 /** Double-tap (Pointer Events): ventana en ms y umbral de movimiento en px para considerar mismo punto */
 const DOUBLE_TAP_DELAY_MS = 450;
 const TAP_MOVEMENT_THRESHOLD_PX = 12;
@@ -155,6 +156,7 @@ function PDFViewerComponent({
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadAttempt, setReloadAttempt] = useState(0);
   const [pageWidth, setPageWidth] = useState<number>(600);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenHeaderVisible, setFullscreenHeaderVisible] = useState(true);
@@ -221,6 +223,20 @@ function PDFViewerComponent({
       setPdfLoadedOffline(false);
     }
   }, [isOpen]);
+
+  // Avoid infinite "Cargando PDF..." when worker/assets fail to load (common offline failure mode).
+  useEffect(() => {
+    if (!isOpen || !pdfUrl || !loading || error) return;
+    const timer = setTimeout(() => {
+      setLoading(false);
+      setError(
+        !isOnline
+          ? 'No se pudo cargar el visor PDF en modo sin conexión. Conéctate a internet para actualizar la app o vuelve a intentar.'
+          : 'El PDF tardó demasiado en cargar. Intenta cerrar y abrir de nuevo.'
+      );
+    }, PDF_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isOpen, pdfUrl, loading, error, isOnline]);
 
   // Suppress known JPEG2000 warning while viewer is open (OpenJPEG not bundled; PDF still renders)
   useEffect(() => {
@@ -299,7 +315,15 @@ function PDFViewerComponent({
           setLoading(false);
         });
     }
-  }, [isOpen, book.file_path, getBookUrl, isOnline, isOfflineAvailable]);
+  }, [isOpen, book.file_path, getBookUrl, isOnline, isOfflineAvailable, reloadAttempt]);
+
+  const retryLoadPdf = useCallback(() => {
+    setError(null);
+    setLoading(true);
+    setPdfUrl(null);
+    setPdfLoadedOffline(false);
+    setReloadAttempt((prev) => prev + 1);
+  }, []);
 
   // Restore last read position only when dialog opens (not on every book.current_page update, to avoid jump when user clicks next/prev)
   useEffect(() => {
@@ -842,7 +866,10 @@ function PDFViewerComponent({
               {error && (
                 <div key="pdf-viewer-error" className="flex flex-col items-center justify-center h-full gap-3 bg-white dark:bg-black">
                   <p className="text-destructive">{error}</p>
-                  <Button variant="outline" onClick={handleClose}>Cerrar</Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={retryLoadPdf}>Reintentar</Button>
+                    <Button variant="ghost" onClick={handleClose}>Cerrar</Button>
+                  </div>
                 </div>
               )}
 
