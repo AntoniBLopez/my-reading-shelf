@@ -18,7 +18,8 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      devOptions: { enabled: true },
+      // Keep service worker off in local dev to avoid noisy Workbox routing warnings.
+      devOptions: { enabled: false },
       manifest: false,
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest}"],
