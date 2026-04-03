@@ -49,6 +49,7 @@ export interface BookCardProps {
   isOfflineAvailable?: boolean;
   onDownloadOffline?: (id: string) => Promise<boolean>;
   onRemoveOffline?: (id: string) => Promise<boolean>;
+  quickActionLabel?: string;
   /** Mover libro a otra carpeta; si se pasa, se muestra la opción "Mover de carpeta" con la lista de carpetas */
   onMoveToFolder?: (bookId: string, targetFolderId: string) => Promise<boolean>;
   /** Lista de carpetas a las que se puede mover (ej. todas menos la actual); cada una { id, name } */
@@ -69,6 +70,7 @@ export function BookCard({
   isOfflineAvailable = false,
   onDownloadOffline,
   onRemoveOffline,
+  quickActionLabel,
   onMoveToFolder,
   foldersForMove,
 }: BookCardProps) {
@@ -149,6 +151,9 @@ export function BookCard({
           </div>
 
           <div className="flex-1 min-w-0">
+          {quickActionLabel && (
+            <p className="text-[11px] font-medium text-primary mb-0.5">{quickActionLabel}</p>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <p className="font-medium truncate">{book.title}</p>

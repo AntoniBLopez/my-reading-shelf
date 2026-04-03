@@ -20,6 +20,11 @@ import {
   getPendingBookUpdates,
   enqueuePendingBookUpdate,
   removePendingBookUpdates,
+  getPendingStructureOperations,
+  enqueuePendingStructureOperation,
+  removePendingStructureOperations,
+  type PendingStructureOperation,
+  type PendingStructureOperationInput,
   LOCAL_USER_ID,
 } from '@/lib/localStorage';
 
@@ -91,6 +96,18 @@ export function useLibrary() {
       if (!user) return;
       enqueuePendingBookUpdate({ user_id: user.id, book_id: bookId, updates });
       if (notify) toast.message('Cambio guardado offline. Se sincronizará al reconectar.');
+    },
+    [user]
+  );
+
+  const enqueueRemoteStructureOperation = useCallback(
+    (
+      operation: Omit<PendingStructureOperationInput, 'user_id'>,
+      notify = true
+    ) => {
+      if (!user) return;
+      enqueuePendingStructureOperation({ ...operation, user_id: user.id });
+      if (notify) toast.message('Cambio de estructura guardado offline. Se sincronizará al reconectar.');
     },
     [user]
   );
@@ -195,6 +212,137 @@ export function useLibrary() {
     }
   }, [user, isLocal]);
 
+  const processPendingStructureOperations = useCallback(async () => {
+    if (!user || isLocal || !isOnline || !supabase) return;
+    const pending = getPendingStructureOperations(user.id);
+    if (!pending.length) return;
+
+    const processedIds: string[] = [];
+    for (const item of pending) {
+      try {
+        if (item.type === 'folder_create') {
+          const folder = item.folder;
+          if (!folder.category_id) {
+            const { data: existing, error: existingError } = await supabase
+              .from('folders')
+              .select('id, position')
+              .eq('user_id', user.id)
+              .is('category_id', null);
+            if (existingError) throw existingError;
+            await Promise.all(
+              (existing ?? []).map((f) =>
+                supabase.from('folders').update({ position: (f.position ?? 0) + 1 }).eq('id', f.id)
+              )
+            );
+          }
+          const { error } = await supabase.from('folders').upsert({
+            id: folder.id,
+            user_id: user.id,
+            name: folder.name,
+            description: folder.description ?? null,
+            category_id: folder.category_id ?? null,
+            position: folder.position ?? 0,
+          });
+          if (error) throw error;
+        } else if (item.type === 'folder_update') {
+          const { error } = await supabase
+            .from('folders')
+            .update(item.updates)
+            .eq('id', item.folder_id)
+            .eq('user_id', user.id);
+          if (error) throw error;
+        } else if (item.type === 'folder_delete') {
+          for (const b of item.books) {
+            if (!b.file_path.startsWith('local://')) {
+              await supabase.storage.from('pdfs').remove([b.file_path]);
+            }
+            const { error: deleteBookErr } = await supabase
+              .from('books')
+              .delete()
+              .eq('id', b.id)
+              .eq('user_id', user.id);
+            if (deleteBookErr) throw deleteBookErr;
+          }
+          const { error } = await supabase
+            .from('folders')
+            .delete()
+            .eq('id', item.folder_id)
+            .eq('user_id', user.id);
+          if (error) throw error;
+        } else if (item.type === 'category_create') {
+          const category = item.category;
+          const { error } = await supabase.from('folder_categories').upsert({
+            id: category.id,
+            user_id: user.id,
+            name: category.name,
+            position: category.position ?? 0,
+          });
+          if (error) throw error;
+        } else if (item.type === 'category_update') {
+          const { error } = await supabase
+            .from('folder_categories')
+            .update(item.updates)
+            .eq('id', item.category_id)
+            .eq('user_id', user.id);
+          if (error) throw error;
+        } else if (item.type === 'category_delete') {
+          const { error: uncategorizeErr } = await supabase
+            .from('folders')
+            .update({ category_id: null })
+            .eq('category_id', item.category_id)
+            .eq('user_id', user.id);
+          if (uncategorizeErr) throw uncategorizeErr;
+          const { error } = await supabase
+            .from('folder_categories')
+            .delete()
+            .eq('id', item.category_id)
+            .eq('user_id', user.id);
+          if (error) throw error;
+        } else if (item.type === 'category_delete_with_contents') {
+          for (const folder of item.folders) {
+            for (const b of folder.books) {
+              if (!b.file_path.startsWith('local://')) {
+                await supabase.storage.from('pdfs').remove([b.file_path]);
+              }
+              const { error: deleteBookErr } = await supabase
+                .from('books')
+                .delete()
+                .eq('id', b.id)
+                .eq('user_id', user.id);
+              if (deleteBookErr) throw deleteBookErr;
+            }
+            const { error: deleteFolderErr } = await supabase
+              .from('folders')
+              .delete()
+              .eq('id', folder.id)
+              .eq('user_id', user.id);
+            if (deleteFolderErr) throw deleteFolderErr;
+          }
+          const { error } = await supabase
+            .from('folder_categories')
+            .delete()
+            .eq('id', item.category_id)
+            .eq('user_id', user.id);
+          if (error) throw error;
+        }
+        processedIds.push(item.id);
+      } catch (err) {
+        console.error('Error syncing offline structure op:', err);
+        break;
+      }
+    }
+
+    if (processedIds.length) {
+      removePendingStructureOperations(processedIds);
+      await Promise.all([fetchFolders(), fetchBooks(), fetchCategories()]);
+      toast.success(
+        processedIds.length === 1
+          ? '1 cambio de estructura sincronizado'
+          : `${processedIds.length} cambios de estructura sincronizados`
+      );
+    }
+  }, [user, isLocal, isOnline, fetchFolders, fetchBooks, fetchCategories]);
+
   useEffect(() => {
     if (user) {
       if (lastUserIdRef.current !== user.id) {
@@ -233,8 +381,12 @@ export function useLibrary() {
 
   useEffect(() => {
     if (!user || isLocal || !isOnline) return;
-    void processPendingBookUpdates();
-  }, [user, isLocal, isOnline, processPendingBookUpdates]);
+    const syncAll = async () => {
+      await processPendingStructureOperations();
+      await processPendingBookUpdates();
+    };
+    void syncAll();
+  }, [user, isLocal, isOnline, processPendingStructureOperations, processPendingBookUpdates]);
 
   const createFolder = async (name: string, description?: string) => {
     if (!user) return null;
@@ -244,6 +396,8 @@ export function useLibrary() {
       user_id: user.id,
       name,
       description: description ?? null,
+      category_id: null,
+      position: 0,
       created_at: now,
       updated_at: now,
     };
@@ -260,6 +414,15 @@ export function useLibrary() {
       setLayout(newLayout);
       setLocalFolderLayout(newLayout);
       toast.success('Carpeta creada');
+      return folder;
+    }
+    if (!isOnline) {
+      setFolders(prev => [
+        folder,
+        ...prev.map(f => (f.category_id ? f : { ...f, position: (f.position ?? 0) + 1 })),
+      ]);
+      enqueueRemoteStructureOperation({ type: 'folder_create', folder });
+      toast.success('Carpeta creada (pendiente de sincronizar)');
       return folder;
     }
     if (!supabase) return null;
@@ -294,6 +457,12 @@ export function useLibrary() {
       setLocalFolders(next);
       setFolders(next);
       toast.success('Carpeta actualizada');
+      return true;
+    }
+    if (!isOnline) {
+      setFolders(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
+      enqueueRemoteStructureOperation({ type: 'folder_update', folder_id: id, updates });
+      toast.success('Carpeta actualizada (pendiente de sincronizar)');
       return true;
     }
     if (!supabase) return false;
@@ -332,6 +501,23 @@ export function useLibrary() {
     if (isLocalDelete) {
       setLocalFolders(nextFolders);
       setLocalBooks(nextBooks);
+    }
+
+    if (!isLocalDelete && !isOnline) {
+      const bookIdsToRemove = new Set(booksInFolder.map((b) => b.id));
+      const pendingBookUpdates = getPendingBookUpdates(user?.id);
+      removePendingBookUpdates(
+        pendingBookUpdates
+          .filter((q) => bookIdsToRemove.has(q.book_id))
+          .map((q) => q.id)
+      );
+      enqueueRemoteStructureOperation({
+        type: 'folder_delete',
+        folder_id: id,
+        books: booksInFolder.map((b) => ({ id: b.id, file_path: b.file_path })),
+      });
+      toast.success('Carpeta eliminada (pendiente de sincronizar)');
+      return true;
     }
 
     if (!isLocalDelete && supabase) {
@@ -863,21 +1049,30 @@ export function useLibrary() {
   const createCategory = async (name: string) => {
     if (!user) return null;
     const trimmedName = name.trim();
+    const now = new Date().toISOString();
+    const category: FolderCategory = {
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      name: trimmedName,
+      position: categories.length,
+      created_at: now,
+      updated_at: now,
+    };
     if (isLocal) {
-      const now = new Date().toISOString();
-      const category: FolderCategory = {
-        id: crypto.randomUUID(),
-        user_id: user.id,
-        name: trimmedName,
-        position: categories.length,
-        created_at: now,
-        updated_at: now,
-      };
       const next = [...categories, category];
       setCategories(next);
       setLocalCategories(next);
       persistLayout({ ...layout, categoryOrder: [...layout.categoryOrder, category.id] });
       toast.success('Categoría creada');
+      return category;
+    }
+    if (!isOnline) {
+      const next = [...categories, category];
+      setCategories(next);
+      setLocalCategories(next);
+      persistLayout({ ...layout, categoryOrder: [...layout.categoryOrder, category.id] });
+      enqueueRemoteStructureOperation({ type: 'category_create', category });
+      toast.success('Categoría creada (pendiente de sincronizar)');
       return category;
     }
     if (!supabase) return null;
@@ -891,20 +1086,22 @@ export function useLibrary() {
       console.error(error);
       return null;
     }
-    const category = data as FolderCategory;
-    const next = [...categories, category];
+    const createdCategory = data as FolderCategory;
+    const next = [...categories, createdCategory];
     setCategories(next);
     setLocalCategories(next);
-    persistLayout({ ...layout, categoryOrder: [...layout.categoryOrder, category.id] });
+    persistLayout({ ...layout, categoryOrder: [...layout.categoryOrder, createdCategory.id] });
     toast.success('Categoría creada');
-    return category;
+    return createdCategory;
   };
 
   const updateCategory = async (id: string, updates: Partial<Pick<FolderCategory, 'name'>>) => {
     const next = categories.map(c => (c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c));
     setCategories(next);
     setLocalCategories(next);
-    if (!isLocal && supabase) {
+    if (!isLocal && !isOnline) {
+      enqueueRemoteStructureOperation({ type: 'category_update', category_id: id, updates });
+    } else if (!isLocal && supabase) {
       const { error } = await supabase.from('folder_categories').update(updates).eq('id', id);
       if (error) {
         toast.error('Error al actualizar categoría');
@@ -917,7 +1114,9 @@ export function useLibrary() {
   };
 
   const deleteCategory = async (id: string) => {
-    if (!isLocal && supabase) {
+    if (!isLocal && !isOnline) {
+      enqueueRemoteStructureOperation({ type: 'category_delete', category_id: id });
+    } else if (!isLocal && supabase) {
       const { error: updateError } = await supabase
         .from('folders')
         .update({ category_id: null })
@@ -953,6 +1152,41 @@ export function useLibrary() {
     const { categories: catsWithFolders } = getOrderedSections();
     const sec = catsWithFolders.find(c => c.category.id === id);
     const folderIds = sec?.folders.map(f => f.id) ?? [];
+    if (!isLocal && !isOnline) {
+      const snapshotFolders = (sec?.folders ?? []).map((f) => ({
+        id: f.id,
+        books: books
+          .filter((b) => b.folder_id === f.id)
+          .map((b) => ({ id: b.id, file_path: b.file_path })),
+      }));
+      const removedBookIds = new Set(snapshotFolders.flatMap((f) => f.books.map((b) => b.id)));
+      const pendingBookUpdates = getPendingBookUpdates(user?.id);
+      removePendingBookUpdates(
+        pendingBookUpdates
+          .filter((q) => removedBookIds.has(q.book_id))
+          .map((q) => q.id)
+      );
+      const nextFolders = folders.filter((f) => !folderIds.includes(f.id));
+      const nextBooks = books.filter((b) => !folderIds.includes(b.folder_id));
+      setFolders(nextFolders);
+      setBooks(nextBooks);
+      const nextCategories = categories.filter(c => c.id !== id);
+      setCategories(nextCategories);
+      setLocalCategories(nextCategories);
+      const newPositions = { ...layout.folderPositions };
+      folderIds.forEach(fid => delete newPositions[fid]);
+      persistLayout({
+        folderPositions: newPositions,
+        categoryOrder: layout.categoryOrder.filter(cid => cid !== id),
+      });
+      enqueueRemoteStructureOperation({
+        type: 'category_delete_with_contents',
+        category_id: id,
+        folders: snapshotFolders,
+      });
+      toast.success('Categoría, carpetas y libros eliminados (pendiente de sincronizar)');
+      return true;
+    }
     for (const fid of folderIds) {
       await deleteFolder(fid);
     }

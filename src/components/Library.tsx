@@ -915,9 +915,9 @@ export function Library({
       {lastViewedBooks.length > 0 && (
         <div className="rounded-2xl border border-border bg-muted/20 dark:bg-muted/10 p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-serif text-lg font-semibold">Last view</h2>
+            <h2 className="font-serif text-lg font-semibold">Continuar leyendo</h2>
             <span className="text-sm text-muted-foreground">
-              {lastViewedBooks.length} acceso{lastViewedBooks.length !== 1 ? 's' : ''} rápido{lastViewedBooks.length !== 1 ? 's' : ''}
+              Abre rápido tus {lastViewedBooks.length} último{lastViewedBooks.length !== 1 ? 's' : ''} libro{lastViewedBooks.length !== 1 ? 's' : ''}
             </span>
           </div>
           <div className="space-y-2">
@@ -925,6 +925,7 @@ export function Library({
               <div key={`last-view-${book.id}`} className="space-y-1">
                 <BookCard
                   book={book}
+                  quickActionLabel="Continuar leyendo"
                   onToggleRead={onToggleBookRead}
                   onSetState={onSetBookState}
                   onRename={onRenameBook}
