@@ -22,7 +22,8 @@ export default defineConfig({
       devOptions: { enabled: false },
       manifest: false,
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest}"],
+        // Include .mjs so pdf.js worker chunks are precached and PDF opens offline.
+        globPatterns: ["**/*.{js,mjs,css,html,ico,png,svg,webmanifest}"],
         navigateFallback: "index.html",
       },
     }),

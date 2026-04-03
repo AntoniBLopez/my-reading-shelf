@@ -289,6 +289,8 @@ export function BookCard({
         onClose={closeViewer}
         onProgressUpdate={onProgressUpdate}
         getBookUrl={getBookUrl}
+        isOnline={isOnline}
+        isOfflineAvailable={isOfflineAvailable}
       />
 
       <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>

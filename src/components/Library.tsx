@@ -912,6 +912,19 @@ export function Library({
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <div className="rounded-2xl border border-border bg-card/60 p-3 sm:p-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar libro en toda la biblioteca..."
+            className="pl-9"
+            aria-label="Buscar libro en toda la biblioteca"
+          />
+        </div>
+      </div>
+
       {lastViewedBooks.length > 0 && (
         <div className="rounded-2xl border border-border bg-muted/20 dark:bg-muted/10 p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between gap-2">
@@ -948,19 +961,6 @@ export function Library({
           </div>
         </div>
       )}
-
-      <div className="rounded-2xl border border-border bg-card/60 p-3 sm:p-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar libro en toda la biblioteca..."
-            className="pl-9"
-            aria-label="Buscar libro en toda la biblioteca"
-          />
-        </div>
-      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>

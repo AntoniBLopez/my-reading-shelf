@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, forwardRef } from 'react';
+import { useState, useEffect, useCallback, forwardRef, useRef, useTransition } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Dashboard } from './Dashboard';
@@ -64,12 +64,31 @@ export function MainLayout() {
   const [searchParams] = useSearchParams();
   const openBookId = searchParams.get('book');
   const [currentView, setCurrentViewState] = useState<View>(getViewFromSearchParams);
+  const [isPendingViewTransition, startViewTransition] = useTransition();
+  const viewTransitionRafRef = useRef<number | null>(null);
 
   const setCurrentView = useCallback((view: View) => {
-    setCurrentViewState(view);
+    if (viewTransitionRafRef.current !== null) {
+      cancelAnimationFrame(viewTransitionRafRef.current);
+    }
+    // Defer heavy view mounts (Library) to next frame and mark as transition to reduce input blocking.
+    viewTransitionRafRef.current = requestAnimationFrame(() => {
+      startViewTransition(() => {
+        setCurrentViewState(view);
+      });
+      viewTransitionRafRef.current = null;
+    });
     const url = new URL(window.location.href);
     url.searchParams.set('tab', view);
     window.history.replaceState(null, '', url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : ''));
+  }, [startViewTransition]);
+
+  useEffect(() => {
+    return () => {
+      if (viewTransitionRafRef.current !== null) {
+        cancelAnimationFrame(viewTransitionRafRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -159,7 +178,14 @@ export function MainLayout() {
         </Button>
         <main className={cn('flex-1 p-4 lg:pl-14 lg:pr-8 lg:pt-8 overflow-auto min-w-0', 'pb-20 lg:pb-8')}>
         <div className="max-w-5xl mx-auto">
-          {currentView === 'dashboard' ? (
+          {isPendingViewTransition ? (
+            <div className="min-h-[220px] flex items-center justify-center">
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                <p className="text-sm">Cambiando de vista...</p>
+              </div>
+            </div>
+          ) : currentView === 'dashboard' ? (
             <Dashboard stats={stats} onNavigateToLibrary={() => setCurrentView('library')} />
           ) : (
             <Library

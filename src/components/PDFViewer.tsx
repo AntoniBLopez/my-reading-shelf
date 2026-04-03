@@ -4,11 +4,13 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useTheme } from 'next-themes';
 import { Book } from '@/types/library';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -25,6 +27,7 @@ import {
   Moon,
   Sun,
   Square,
+  WifiOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import 'react-pdf/src/Page/AnnotationLayer.css';
@@ -124,6 +127,8 @@ interface PDFViewerProps {
   onClose: () => void;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   getBookUrl: (filePath: string) => Promise<string | null>;
+  isOnline?: boolean;
+  isOfflineAvailable?: boolean;
 }
 
 function pdfViewerPropsAreEqual(prev: PDFViewerProps, next: PDFViewerProps) {
@@ -135,7 +140,15 @@ function pdfViewerPropsAreEqual(prev: PDFViewerProps, next: PDFViewerProps) {
   );
 }
 
-function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUrl }: PDFViewerProps) {
+function PDFViewerComponent({
+  book,
+  isOpen,
+  onClose,
+  onProgressUpdate,
+  getBookUrl,
+  isOnline = true,
+  isOfflineAvailable = false,
+}: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(book.current_page || 1);
   const [scale, setScale] = useState<number>(0.7);
@@ -148,6 +161,7 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
   const [showFullscreenHint, setShowFullscreenHint] = useState(false);
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const [showBookBorder, setShowBookBorder] = useState(false);
+  const [pdfLoadedOffline, setPdfLoadedOffline] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; scale: number; distance: number; touchedAt?: number } | null>(null);
@@ -204,6 +218,7 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
     if (!isOpen) {
       setPdfUrl(null);
       setError(null);
+      setPdfLoadedOffline(false);
     }
   }, [isOpen]);
 
@@ -261,18 +276,30 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
       setError(null);
       getBookUrl(book.file_path)
         .then((url) => {
-          if (url) setPdfUrl(url);
-          else {
-            setError('No se pudo cargar el PDF');
+          if (url) {
+            setPdfUrl(url);
+            setPdfLoadedOffline(url.startsWith('blob:'));
+          } else {
+            const offlineMissing = !isOnline && !isOfflineAvailable && !book.file_path.startsWith('local://');
+            setError(
+              offlineMissing
+                ? 'No se pudo abrir el PDF porque no tienes conexión y este libro no está descargado para offline.'
+                : 'No se pudo cargar el PDF'
+            );
             setLoading(false);
           }
         })
         .catch(() => {
-          setError('No se pudo cargar el PDF');
+          const offlineMissing = !isOnline && !isOfflineAvailable && !book.file_path.startsWith('local://');
+          setError(
+            offlineMissing
+              ? 'No se pudo abrir el PDF porque no tienes conexión y este libro no está descargado para offline.'
+              : 'No se pudo cargar el PDF'
+          );
           setLoading(false);
         });
     }
-  }, [isOpen, book.file_path, getBookUrl]);
+  }, [isOpen, book.file_path, getBookUrl, isOnline, isOfflineAvailable]);
 
   // Restore last read position only when dialog opens (not on every book.current_page update, to avoid jump when user clicks next/prev)
   useEffect(() => {
@@ -648,6 +675,15 @@ function PDFViewerComponent({ book, isOpen, onClose, onProgressUpdate, getBookUr
               <BookOpen className="w-5 h-5 text-primary" />
               {book.title}
             </DialogTitle>
+            {pdfLoadedOffline && (
+              <Badge variant="outline" className="gap-1 border-primary/30 text-primary">
+                <WifiOff className="w-3 h-3" />
+                Modo offline
+              </Badge>
+            )}
+            <DialogDescription className="sr-only">
+              Visor PDF para leer y navegar por el libro seleccionado.
+            </DialogDescription>
             <Button variant="ghost" size="icon" onClick={handleClose}>
               <X className="w-4 h-4" />
             </Button>
