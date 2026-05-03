@@ -89,7 +89,18 @@ export function useLibrary() {
     (
       bookId: string,
       updates: Partial<
-        Pick<Book, 'title' | 'is_read' | 'read_at' | 'current_page' | 'total_pages' | 'last_viewed_at' | 'folder_id' | 'position'>
+        Pick<
+          Book,
+          | 'title'
+          | 'description'
+          | 'is_read'
+          | 'read_at'
+          | 'current_page'
+          | 'total_pages'
+          | 'last_viewed_at'
+          | 'folder_id'
+          | 'position'
+        >
       >,
       notify = true
     ) => {
@@ -149,6 +160,7 @@ export function useLibrary() {
     } else {
       const booksWithProgress = (data || []).map(book => ({
         ...book,
+        description: (book as any).description ?? null,
         current_page: (book as any).current_page ?? 0,
         total_pages: (book as any).total_pages ?? 0,
         position: (book as any).position ?? 0,
@@ -586,6 +598,7 @@ export function useLibrary() {
         folder_id: folderId,
         user_id: user.id,
         title,
+        description: null,
         file_path: `local://${bookId}`,
         file_name: file.name.toLowerCase(),
         is_read: false,
@@ -631,6 +644,7 @@ export function useLibrary() {
     }
     const bookWithProgress: Book = {
       ...data,
+      description: (data as any).description ?? null,
       current_page: (data as any).current_page ?? 0,
       total_pages: (data as any).total_pages ?? 0,
     };
@@ -691,29 +705,36 @@ export function useLibrary() {
     return setBookState(id, isRead ? 'Leído' : 'Pendiente');
   };
 
-  const updateBook = async (id: string, updates: Partial<Pick<Book, 'title'>>) => {
+  const updateBook = async (id: string, updates: Partial<Pick<Book, 'title' | 'description'>>) => {
     if (!updates.title?.trim()) return false;
+    const payload: Partial<Pick<Book, 'title' | 'description'>> = {
+      title: updates.title.trim(),
+    };
+    if ('description' in updates) {
+      const d = updates.description;
+      payload.description = typeof d === 'string' && d.trim() ? d.trim() : null;
+    }
     if (isLocal) {
-      const next = getLocalBooks().map(b => (b.id === id ? { ...b, ...updates } : b));
+      const next = getLocalBooks().map(b => (b.id === id ? { ...b, ...payload } : b));
       setLocalBooks(next);
       setBooks(next);
-      toast.success('Libro renombrado');
+      toast.success('Libro actualizado');
       return true;
     }
     if (!isOnline) {
-      setBooks(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
-      enqueueRemoteBookUpdate(id, updates);
+      setBooks(prev => prev.map(b => (b.id === id ? { ...b, ...payload } : b)));
+      enqueueRemoteBookUpdate(id, payload);
       return true;
     }
     if (!supabase) return false;
-    const { error } = await supabase.from('books').update(updates).eq('id', id);
+    const { error } = await supabase.from('books').update(payload).eq('id', id);
     if (error) {
-      toast.error('Error al renombrar');
+      toast.error('Error al actualizar el libro');
       console.error(error);
       return false;
     }
-    setBooks(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
-    toast.success('Libro renombrado');
+    setBooks(prev => prev.map(b => (b.id === id ? { ...b, ...payload } : b)));
+    toast.success('Libro actualizado');
     return true;
   };
 

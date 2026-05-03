@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Folder, Book, BookState } from '@/types/library';
+import { Folder, Book, BookState, FolderCategory } from '@/types/library';
 import {
   DndContext,
   DragEndEvent,
@@ -18,6 +18,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   Dialog,
@@ -52,6 +55,7 @@ import {
   Tag,
   ChevronDown,
   ChevronUp,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ExpandMoreButton } from './ExpandMoreButton';
@@ -67,7 +71,7 @@ interface FolderCardProps {
   onUploadBook: (folderId: string, file: File, title: string) => Promise<Book | null>;
   onToggleBookRead: (id: string, isRead: boolean) => Promise<boolean>;
   onSetBookState: (id: string, state: BookState) => Promise<boolean>;
-  onRenameBook: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
+  onUpdateBook: (id: string, updates: Partial<Pick<Book, 'title' | 'description'>>) => Promise<boolean>;
   onDeleteBook: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   onBookViewed?: (id: string) => Promise<boolean>;
@@ -85,6 +89,9 @@ interface FolderCardProps {
   onOpenCreateCategory?: (folderId: string) => void;
   /** Book ID from URL (?book=xxx) - auto-expand folder and books list if it contains this book */
   openBookId?: string | null;
+  /** Categorías a las que se puede mover la carpeta (menú «Mover»). */
+  folderCategories?: Pick<FolderCategory, 'id' | 'name'>[];
+  onMoveFolderToCategory?: (folderId: string, targetCategoryId: string | null) => void;
 }
 
 function SortableBookCard({
@@ -92,7 +99,7 @@ function SortableBookCard({
   showDragHandle,
   onToggleBookRead,
   onSetBookState,
-  onRenameBook,
+  onUpdateBook,
   onDeleteBook,
   onProgressUpdate,
   onBookViewed,
@@ -108,7 +115,7 @@ function SortableBookCard({
   showDragHandle: boolean;
   onToggleBookRead: (id: string, isRead: boolean) => Promise<boolean>;
   onSetBookState: (id: string, state: BookState) => Promise<boolean>;
-  onRenameBook: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
+  onUpdateBook: (id: string, updates: Partial<Pick<Book, 'title' | 'description'>>) => Promise<boolean>;
   onDeleteBook: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   onBookViewed?: (id: string) => Promise<boolean>;
@@ -131,7 +138,7 @@ function SortableBookCard({
         dragHandleProps={showDragHandle ? { listeners, attributes: attributes as object } : undefined}
         onToggleRead={onToggleBookRead}
         onSetState={onSetBookState}
-        onRename={onRenameBook}
+        onUpdateBook={onUpdateBook}
         onDelete={onDeleteBook}
         onProgressUpdate={onProgressUpdate}
         onOpenBook={onBookViewed}
@@ -156,7 +163,7 @@ export function FolderCard({
   onUploadBook,
   onToggleBookRead,
   onSetBookState,
-  onRenameBook,
+  onUpdateBook,
   onDeleteBook,
   onProgressUpdate,
   onBookViewed,
@@ -170,6 +177,8 @@ export function FolderCard({
   allFolders,
   onOpenCreateCategory,
   openBookId,
+  folderCategories,
+  onMoveFolderToCategory,
 }: FolderCardProps) {
   const isMobile = useIsMobile();
   const bookLimit = isMobile ? 2 : 4;
@@ -197,6 +206,19 @@ export function FolderCard({
   const totalCount = books.length;
 
   const foldersForMove = allFolders?.filter((f) => f.id !== folder.id) ?? [];
+
+  const currentFolderCategoryId = folder.category_id ?? null;
+  const folderMoveTargets: { label: string; categoryId: string | null }[] = [];
+  if (currentFolderCategoryId != null) {
+    folderMoveTargets.push({ label: 'Sin categoría', categoryId: null });
+  }
+  for (const c of folderCategories ?? []) {
+    if (c.id !== currentFolderCategoryId) {
+      folderMoveTargets.push({ label: c.name, categoryId: c.id });
+    }
+  }
+  const showFolderMoveSubmenu =
+    Boolean(onMoveFolderToCategory) && folderMoveTargets.length > 0;
 
   const bookSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -335,6 +357,26 @@ export function FolderCard({
                 <Tag className="w-4 h-4 mr-2" />
                 Crear categoría
               </DropdownMenuItem>
+              {showFolderMoveSubmenu && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <ArrowRightLeft className="w-4 h-4 mr-2" />
+                    Mover
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-[min(60vh,280px)] overflow-y-auto">
+                    {folderMoveTargets.map((t) => (
+                      <DropdownMenuItem
+                        key={t.categoryId ?? '__uncategorized__'}
+                        onSelect={() => {
+                          setTimeout(() => onMoveFolderToCategory?.(folder.id, t.categoryId), 0);
+                        }}
+                      >
+                        {t.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
               <DropdownMenuItem onClick={() => setIsEditOpen(true)}>
                 <Edit2 className="w-4 h-4 mr-2" />
                 Editar
@@ -455,7 +497,7 @@ export function FolderCard({
                       showDragHandle={books.length > 1}
                       onToggleBookRead={onToggleBookRead}
                       onSetBookState={onSetBookState}
-                      onRenameBook={onRenameBook}
+                      onUpdateBook={onUpdateBook}
                       onDeleteBook={onDeleteBook}
                       onProgressUpdate={onProgressUpdate}
                       onBookViewed={onBookViewed}
@@ -480,7 +522,7 @@ export function FolderCard({
                             showDragHandle={books.length > 1}
                             onToggleBookRead={onToggleBookRead}
                             onSetBookState={onSetBookState}
-                            onRenameBook={onRenameBook}
+                            onUpdateBook={onUpdateBook}
                             onDeleteBook={onDeleteBook}
                             onProgressUpdate={onProgressUpdate}
                             onBookViewed={onBookViewed}
@@ -506,7 +548,7 @@ export function FolderCard({
                       book={book}
                       onToggleRead={onToggleBookRead}
                       onSetState={onSetBookState}
-                      onRename={onRenameBook}
+                      onUpdateBook={onUpdateBook}
                       onDelete={onDeleteBook}
                       onProgressUpdate={onProgressUpdate}
                       onOpenBook={onBookViewed}
@@ -530,7 +572,7 @@ export function FolderCard({
                             book={book}
                             onToggleRead={onToggleBookRead}
                             onSetState={onSetBookState}
-                            onRename={onRenameBook}
+                            onUpdateBook={onUpdateBook}
                             onDelete={onDeleteBook}
                             onProgressUpdate={onProgressUpdate}
                             onOpenBook={onBookViewed}

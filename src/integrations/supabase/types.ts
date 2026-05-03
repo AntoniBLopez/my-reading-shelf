@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           created_at: string
           current_page: number
+          description: string | null
           file_name: string
           file_path: string
           folder_id: string
@@ -34,6 +35,7 @@ export type Database = {
         Insert: {
           created_at?: string
           current_page?: number
+          description?: string | null
           file_name: string
           file_path: string
           folder_id: string
@@ -50,6 +52,7 @@ export type Database = {
         Update: {
           created_at?: string
           current_page?: number
+          description?: string | null
           file_name?: string
           file_path?: string
           folder_id?: string

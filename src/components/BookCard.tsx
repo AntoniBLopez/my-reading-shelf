@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,7 +41,7 @@ export interface BookCardProps {
   dragHandleProps?: { listeners: object; attributes: object };
   onToggleRead: (id: string, isRead: boolean) => Promise<boolean>;
   onSetState: (id: string, state: BookState) => Promise<boolean>;
-  onRename: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
+  onUpdateBook: (id: string, updates: Partial<Pick<Book, 'title' | 'description'>>) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   onOpenBook?: (id: string) => Promise<boolean>;
@@ -61,7 +62,7 @@ export function BookCard({
   dragHandleProps,
   onToggleRead,
   onSetState,
-  onRename,
+  onUpdateBook,
   onDelete,
   onProgressUpdate,
   onOpenBook,
@@ -94,20 +95,27 @@ export function BookCard({
       return next;
     });
   };
-  const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [renameTitle, setRenameTitle] = useState(book.title);
+  const [editTitle, setEditTitle] = useState(book.title);
+  const [editDescription, setEditDescription] = useState(book.description ?? '');
 
   useEffect(() => {
-    if (isRenameOpen) setRenameTitle(book.title);
-  }, [isRenameOpen, book.title]);
+    if (isEditOpen) {
+      setEditTitle(book.title);
+      setEditDescription(book.description ?? '');
+    }
+  }, [isEditOpen, book.title, book.description]);
 
-  const handleRename = async () => {
-    const title = renameTitle.trim();
+  const handleSaveEdit = async () => {
+    const title = editTitle.trim();
     if (!title) return;
-    const success = await onRename(book.id, { title });
-    if (success) setIsRenameOpen(false);
+    const success = await onUpdateBook(book.id, {
+      title,
+      description: editDescription.trim() || null,
+    });
+    if (success) setIsEditOpen(false);
   };
 
   const handleResetToNotStarted = async () => {
@@ -162,6 +170,9 @@ export function BookCard({
               {book.title}
             </TooltipContent>
           </Tooltip>
+          {book.description?.trim() ? (
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{book.description.trim()}</p>
+          ) : null}
           <div className="flex items-center gap-2 mt-1">
             {book.total_pages > 0 ? (
               <>
@@ -170,9 +181,9 @@ export function BookCard({
                   {progressPercent}% · Pág. {book.current_page}/{book.total_pages}
                 </span>
               </>
-            ) : (
+            ) : !book.description?.trim() ? (
               <span className="text-xs text-muted-foreground">{book.file_name}</span>
-            )}
+            ) : null}
           </div>
           <div className="flex items-center gap-1.5 mt-1.5">
             {state === 'Leído' && (
@@ -218,11 +229,11 @@ export function BookCard({
             <DropdownMenuContent align="end" className="cursor-pointer">
               <DropdownMenuItem
                 onSelect={() => {
-                  setTimeout(() => setIsRenameOpen(true), 0);
+                  setTimeout(() => setIsEditOpen(true), 0);
                 }}
               >
                 <Pencil className="w-4 h-4 mr-2" />
-                Renombrar
+                Editar
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onSetState(book.id, 'Leído')} disabled={state === 'Leído'}>
                 <Check className="w-4 h-4 mr-2" />
@@ -255,7 +266,9 @@ export function BookCard({
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
               )}
-              {onDownloadOffline && !book.file_path.startsWith('local://') && !isOfflineAvailable && (
+              {onDownloadOffline &&
+                !book.file_path.startsWith('local://') &&
+                !isOfflineAvailable && (
                 <DropdownMenuItem
                   onSelect={() => void onDownloadOffline(book.id)}
                   disabled={!isOnline}
@@ -264,7 +277,9 @@ export function BookCard({
                   Descargar para offline
                 </DropdownMenuItem>
               )}
-              {onRemoveOffline && !book.file_path.startsWith('local://') && isOfflineAvailable && (
+              {onRemoveOffline &&
+                !book.file_path.startsWith('local://') &&
+                isOfflineAvailable && (
                 <DropdownMenuItem onSelect={() => void onRemoveOffline(book.id)}>
                   <WifiOff className="w-4 h-4 mr-2" />
                   Quitar de offline
@@ -293,19 +308,38 @@ export function BookCard({
         isOfflineAvailable={isOfflineAvailable}
       />
 
-      <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>
-        <DialogContent>
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-serif">Renombrar libro</DialogTitle>
+            <DialogTitle className="font-serif">Editar libro</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <Input
-              value={renameTitle}
-              onChange={(e) => setRenameTitle(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleRename()}
-              placeholder="Nombre del libro"
-            />
-            <Button onClick={handleRename} className="w-full" disabled={!renameTitle.trim()}>
+          <div className="space-y-3 pt-2">
+            <div className="space-y-1.5">
+              <label htmlFor={`book-edit-title-${book.id}`} className="text-sm font-medium">
+                Título
+              </label>
+              <Input
+                id={`book-edit-title-${book.id}`}
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), void handleSaveEdit())}
+                placeholder="Nombre del libro"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor={`book-edit-desc-${book.id}`} className="text-sm font-medium">
+                Descripción
+              </label>
+              <Textarea
+                id={`book-edit-desc-${book.id}`}
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Texto que verás bajo el título en la biblioteca"
+                rows={3}
+                className="resize-y min-h-[72px]"
+              />
+            </div>
+            <Button onClick={() => void handleSaveEdit()} className="w-full" disabled={!editTitle.trim()}>
               Guardar
             </Button>
           </div>

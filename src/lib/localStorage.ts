@@ -21,7 +21,18 @@ export interface PendingBookUpdate {
   user_id: string;
   book_id: string;
   updates: Partial<
-    Pick<Book, 'title' | 'is_read' | 'read_at' | 'current_page' | 'total_pages' | 'last_viewed_at' | 'folder_id' | 'position'>
+    Pick<
+      Book,
+      | 'title'
+      | 'description'
+      | 'is_read'
+      | 'read_at'
+      | 'current_page'
+      | 'total_pages'
+      | 'last_viewed_at'
+      | 'folder_id'
+      | 'position'
+    >
   >;
   created_at: string;
 }
@@ -173,6 +184,7 @@ export function getLocalBooks(): Book[] {
     const data = raw ? JSON.parse(raw) : [];
     return data.map((b: Book) => ({
       ...b,
+      description: b.description ?? null,
       current_page: b.current_page ?? 0,
       total_pages: b.total_pages ?? 0,
     }));

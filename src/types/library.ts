@@ -28,6 +28,8 @@ export interface Book {
   user_id: string;
   folder_id: string;
   title: string;
+  /** Texto breve mostrado bajo el título en la biblioteca. */
+  description: string | null;
   file_path: string;
   file_name: string;
   is_read: boolean;

@@ -104,7 +104,7 @@ interface LibraryProps {
   onUploadBook: (folderId: string, file: File, title: string) => Promise<Book | null>;
   onToggleBookRead: (id: string, isRead: boolean) => Promise<boolean>;
   onSetBookState: (id: string, state: BookState) => Promise<boolean>;
-  onRenameBook: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
+  onUpdateBook: (id: string, updates: Partial<Pick<Book, 'title' | 'description'>>) => Promise<boolean>;
   onDeleteBook: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   onBookViewed?: (id: string) => Promise<boolean>;
@@ -126,7 +126,7 @@ function SortableFolderCard({
   onUploadBook,
   onToggleBookRead,
   onSetBookState,
-  onRenameBook,
+  onUpdateBook,
   onDeleteBook,
   onProgressUpdate,
   onBookViewed,
@@ -140,6 +140,8 @@ function SortableFolderCard({
   allFolders,
   onOpenCreateCategory,
   openBookId,
+  folderCategories,
+  onMoveFolderToCategory,
 }: {
   folder: Folder;
   books: Book[];
@@ -149,7 +151,7 @@ function SortableFolderCard({
   onUploadBook: (folderId: string, file: File, title: string) => Promise<Book | null>;
   onToggleBookRead: (id: string, isRead: boolean) => Promise<boolean>;
   onSetBookState: (id: string, state: BookState) => Promise<boolean>;
-  onRenameBook: (id: string, updates: Partial<Pick<Book, 'title'>>) => Promise<boolean>;
+  onUpdateBook: (id: string, updates: Partial<Pick<Book, 'title' | 'description'>>) => Promise<boolean>;
   onDeleteBook: (id: string) => Promise<boolean>;
   onProgressUpdate: (id: string, currentPage: number, totalPages: number) => Promise<boolean>;
   onBookViewed?: (id: string) => Promise<boolean>;
@@ -163,6 +165,8 @@ function SortableFolderCard({
   allFolders?: { id: string; name: string }[];
   onOpenCreateCategory?: (folderId: string) => void;
   openBookId?: string | null;
+  folderCategories?: Pick<FolderCategory, 'id' | 'name'>[];
+  onMoveFolderToCategory?: (folderId: string, targetCategoryId: string | null) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `folder-${folder.id}`,
@@ -202,7 +206,7 @@ function SortableFolderCard({
             onUploadBook={onUploadBook}
             onToggleBookRead={onToggleBookRead}
             onSetBookState={onSetBookState}
-            onRenameBook={onRenameBook}
+            onUpdateBook={onUpdateBook}
             onDeleteBook={onDeleteBook}
             onProgressUpdate={onProgressUpdate}
             onBookViewed={onBookViewed}
@@ -216,6 +220,8 @@ function SortableFolderCard({
             allFolders={allFolders}
             onOpenCreateCategory={onOpenCreateCategory}
             openBookId={openBookId}
+            folderCategories={folderCategories}
+            onMoveFolderToCategory={onMoveFolderToCategory}
           />
         </div>
       </div>
@@ -354,7 +360,7 @@ export function Library({
   onUploadBook,
   onToggleBookRead,
   onSetBookState,
-  onRenameBook,
+  onUpdateBook,
   onDeleteBook,
   onProgressUpdate,
   onBookViewed,
@@ -369,6 +375,20 @@ export function Library({
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const sections = getOrderedSections();
+  const folderCategoryPickerList = categories.map((c) => ({ id: c.id, name: c.name }));
+  const moveFolderToCategory = (folderId: string, targetCategoryId: string | null) => {
+    const current = getOrderedSections();
+    const folderIdStr = String(folderId);
+    const targetFolderIds =
+      targetCategoryId === null
+        ? current.uncategorized.map((f) => String(f.id)).filter((id) => id !== folderIdStr)
+        : (
+            current.categories.find((c) => c.category.id === targetCategoryId)?.folders ?? []
+          )
+            .map((f) => String(f.id))
+            .filter((id) => id !== folderIdStr);
+    onReorderFolders(folderId, targetCategoryId, targetFolderIds.length);
+  };
   const allFolders = [...sections.uncategorized, ...sections.categories.flatMap(c => c.folders)].map(f => ({ id: f.id, name: f.name }));
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const isSearching = normalizedSearchQuery.length > 0;
@@ -693,7 +713,7 @@ export function Library({
                 onUploadBook={onUploadBook}
                 onToggleBookRead={onToggleBookRead}
                 onSetBookState={onSetBookState}
-                onRenameBook={onRenameBook}
+                onUpdateBook={onUpdateBook}
                 onDeleteBook={onDeleteBook}
                 onProgressUpdate={onProgressUpdate}
                 onBookViewed={onBookViewed}
@@ -707,6 +727,8 @@ export function Library({
                 allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
                 openBookId={openBookId}
+                folderCategories={folderCategoryPickerList}
+                onMoveFolderToCategory={moveFolderToCategory}
               />
             )
           )}
@@ -729,7 +751,7 @@ export function Library({
                       onUploadBook={onUploadBook}
                       onToggleBookRead={onToggleBookRead}
                       onSetBookState={onSetBookState}
-                      onRenameBook={onRenameBook}
+                      onUpdateBook={onUpdateBook}
                       onDeleteBook={onDeleteBook}
                       onProgressUpdate={onProgressUpdate}
                       onBookViewed={onBookViewed}
@@ -743,6 +765,8 @@ export function Library({
                 allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
                 openBookId={openBookId}
+                folderCategories={folderCategoryPickerList}
+                onMoveFolderToCategory={moveFolderToCategory}
                     />
                   )
                 )}
@@ -777,7 +801,7 @@ export function Library({
                   onUploadBook={onUploadBook}
                   onToggleBookRead={onToggleBookRead}
                   onSetBookState={onSetBookState}
-                  onRenameBook={onRenameBook}
+                  onUpdateBook={onUpdateBook}
                   onDeleteBook={onDeleteBook}
                   onProgressUpdate={onProgressUpdate}
                   onBookViewed={onBookViewed}
@@ -791,6 +815,8 @@ export function Library({
                 allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
                 openBookId={openBookId}
+                folderCategories={folderCategoryPickerList}
+                onMoveFolderToCategory={moveFolderToCategory}
                 />
               )
             )}
@@ -813,7 +839,7 @@ export function Library({
                         onUploadBook={onUploadBook}
                         onToggleBookRead={onToggleBookRead}
                         onSetBookState={onSetBookState}
-                        onRenameBook={onRenameBook}
+                        onUpdateBook={onUpdateBook}
                         onDeleteBook={onDeleteBook}
                         onProgressUpdate={onProgressUpdate}
                         onBookViewed={onBookViewed}
@@ -826,6 +852,9 @@ export function Library({
                 onMoveBook={onMoveBook}
                 allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
+                openBookId={openBookId}
+                folderCategories={folderCategoryPickerList}
+                onMoveFolderToCategory={moveFolderToCategory}
                       />
                     )
                   )}
@@ -941,7 +970,7 @@ export function Library({
                   quickActionLabel="Continuar leyendo"
                   onToggleRead={onToggleBookRead}
                   onSetState={onSetBookState}
-                  onRename={onRenameBook}
+                  onUpdateBook={onUpdateBook}
                   onDelete={onDeleteBook}
                   onProgressUpdate={onProgressUpdate}
                   onOpenBook={onBookViewed}
@@ -1012,7 +1041,7 @@ export function Library({
                     book={book}
                     onToggleRead={onToggleBookRead}
                     onSetState={onSetBookState}
-                    onRename={onRenameBook}
+                    onUpdateBook={onUpdateBook}
                     onDelete={onDeleteBook}
                     onProgressUpdate={onProgressUpdate}
                     onOpenBook={onBookViewed}
@@ -1109,7 +1138,7 @@ export function Library({
                           onUploadBook={onUploadBook}
                           onToggleBookRead={onToggleBookRead}
                           onSetBookState={onSetBookState}
-                          onRenameBook={onRenameBook}
+                          onUpdateBook={onUpdateBook}
                           onDeleteBook={onDeleteBook}
                           onProgressUpdate={onProgressUpdate}
                           onBookViewed={onBookViewed}
@@ -1123,6 +1152,8 @@ export function Library({
                 allFolders={allFolders}
                 onOpenCreateCategory={handleOpenCreateCategory}
                 openBookId={openBookId}
+                folderCategories={folderCategoryPickerList}
+                onMoveFolderToCategory={moveFolderToCategory}
                         />
                       )
                     )}
@@ -1162,7 +1193,7 @@ export function Library({
                   onUploadBook={onUploadBook}
                   onToggleBookRead={onToggleBookRead}
                   onSetBookState={onSetBookState}
-                  onRenameBook={onRenameBook}
+                  onUpdateBook={onUpdateBook}
                   onDeleteBook={onDeleteBook}
                   onProgressUpdate={onProgressUpdate}
                   onBookViewed={onBookViewed}
@@ -1175,6 +1206,8 @@ export function Library({
                   allFolders={allFolders}
                   onOpenCreateCategory={handleOpenCreateCategory}
                   openBookId={openBookId}
+                  folderCategories={folderCategoryPickerList}
+                  onMoveFolderToCategory={moveFolderToCategory}
                 />
               </div>
             </div>

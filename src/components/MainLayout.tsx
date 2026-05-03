@@ -207,7 +207,7 @@ export function MainLayout() {
               onUploadBook={uploadBook}
               onToggleBookRead={toggleBookRead}
               onSetBookState={setBookState}
-              onRenameBook={updateBook}
+              onUpdateBook={updateBook}
               onDeleteBook={deleteBook}
               onProgressUpdate={updateBookProgress}
               onBookViewed={markBookViewed}
