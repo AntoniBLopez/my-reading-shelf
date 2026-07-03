@@ -48,7 +48,7 @@ const TAP_MOVEMENT_THRESHOLD_PX = 12;
 /** Double-tap/double-click: fracción del ancho para zona izquierda (anterior) y derecha (siguiente); centro = barra */
 const DOUBLE_TAP_LEFT_ZONE = 0.4;
 const DOUBLE_TAP_RIGHT_ZONE = 0.6;
-/** Snap page width to this grid so layout jitter at 70% zoom doesn't trigger re-renders */
+/** Snap page width to this grid so layout jitter at default zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
 /** Ignore ResizeObserver updates smaller than this (e.g. scrollbar on theme change) so PDFContentBlock doesn't re-render and Document doesn't reset */
 const PAGE_WIDTH_MIN_DELTA_PX = 48;
@@ -152,7 +152,7 @@ function PDFViewerComponent({
 }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(book.current_page || 1);
-  const [scale, setScale] = useState<number>(0.7);
+  const [scale, setScale] = useState<number>(1.1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -171,7 +171,7 @@ function PDFViewerComponent({
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const doubleTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullscreenHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scaleRef = useRef<number>(0.7);
+  const scaleRef = useRef<number>(1.1);
   const pinchRafRef = useRef<number | null>(null);
   const pendingScaleRef = useRef<number | null>(null);
   const isPinchingRef = useRef(false);
