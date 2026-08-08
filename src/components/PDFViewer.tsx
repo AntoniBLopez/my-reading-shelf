@@ -36,7 +36,11 @@ import 'react-pdf/src/Page/TextLayer.css';
 // Keep PDF worker local so viewer works without internet.
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
-const pdfDocOptions = {};
+// OpenJPEG wasm is required to decode JPEG 2000 images used by many scanned books.
+// Path must match the files copied/served by the pdfjsWasm Vite plugin.
+const pdfDocOptions = {
+  wasmUrl: `${import.meta.env.BASE_URL}wasm/`,
+};
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
@@ -237,18 +241,6 @@ function PDFViewerComponent({
     }, PDF_LOAD_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [isOpen, pdfUrl, loading, error, isOnline]);
-
-  // Suppress known JPEG2000 warning while viewer is open (OpenJPEG not bundled; PDF still renders)
-  useEffect(() => {
-    if (!isOpen) return;
-    const orig = console.warn;
-    console.warn = (...args: unknown[]) => {
-      const msg = typeof args[0] === 'string' ? args[0] : String(args[0] ?? '');
-      if (msg.includes('JpxError') || msg.includes('OpenJPEG')) return;
-      orig.apply(console, args);
-    };
-    return () => { console.warn = orig; };
-  }, [isOpen]);
 
   // React-PDF needs an explicit width for the canvas to render correctly (FAQ: don't rely on CSS alone).
   // Only update when width changes meaningfully and throttle to one update per frame to avoid flicker.
