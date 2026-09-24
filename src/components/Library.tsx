@@ -954,6 +954,46 @@ export function Library({
         </div>
       </div>
 
+      {isSearching && (
+        <div className="rounded-2xl border border-border bg-muted/20 dark:bg-muted/10 p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-serif text-lg font-semibold">Resultados</h2>
+            <span className="text-sm text-muted-foreground">
+              {filteredBooks.length} libro{filteredBooks.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          {filteredBooks.length > 0 ? (
+            <div className="space-y-2">
+              {filteredBooks.map((book) => (
+                <div key={book.id} className="space-y-1">
+                  <BookCard
+                    book={book}
+                    onToggleRead={onToggleBookRead}
+                    onSetState={onSetBookState}
+                    onUpdateBook={onUpdateBook}
+                    onDelete={onDeleteBook}
+                    onProgressUpdate={onProgressUpdate}
+                    onOpenBook={onBookViewed}
+                    getBookUrl={getBookUrl}
+                    isOnline={isOnline}
+                    isOfflineAvailable={offlineBookIds?.has(book.id)}
+                    onDownloadOffline={onDownloadBookOffline}
+                    onRemoveOffline={onRemoveBookOffline}
+                    onMoveToFolder={onMoveBook}
+                    foldersForMove={allFolders.filter((f) => f.id !== book.folder_id)}
+                  />
+                  <p className="text-xs text-muted-foreground pl-3">
+                    Carpeta: {folderNameById.get(book.folder_id) ?? 'Sin carpeta'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No se encontraron libros para esta búsqueda.</p>
+          )}
+        </div>
+      )}
+
       {lastViewedBooks.length > 0 && (
         <div className="rounded-2xl border border-border bg-muted/20 dark:bg-muted/10 p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between gap-2">
@@ -1024,46 +1064,6 @@ export function Library({
           )}
         </div>
       </div>
-
-      {isSearching && (
-        <div className="rounded-2xl border border-border bg-muted/20 dark:bg-muted/10 p-4 shadow-sm space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-serif text-lg font-semibold">Resultados</h2>
-            <span className="text-sm text-muted-foreground">
-              {filteredBooks.length} libro{filteredBooks.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-          {filteredBooks.length > 0 ? (
-            <div className="space-y-2">
-              {filteredBooks.map((book) => (
-                <div key={book.id} className="space-y-1">
-                  <BookCard
-                    book={book}
-                    onToggleRead={onToggleBookRead}
-                    onSetState={onSetBookState}
-                    onUpdateBook={onUpdateBook}
-                    onDelete={onDeleteBook}
-                    onProgressUpdate={onProgressUpdate}
-                    onOpenBook={onBookViewed}
-                    getBookUrl={getBookUrl}
-                    isOnline={isOnline}
-                    isOfflineAvailable={offlineBookIds?.has(book.id)}
-                    onDownloadOffline={onDownloadBookOffline}
-                    onRemoveOffline={onRemoveBookOffline}
-                    onMoveToFolder={onMoveBook}
-                    foldersForMove={allFolders.filter((f) => f.id !== book.folder_id)}
-                  />
-                  <p className="text-xs text-muted-foreground pl-3">
-                    Carpeta: {folderNameById.get(book.folder_id) ?? 'Sin carpeta'}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No se encontraron libros para esta búsqueda.</p>
-          )}
-        </div>
-      )}
 
       <DndContext
         sensors={sensors}
