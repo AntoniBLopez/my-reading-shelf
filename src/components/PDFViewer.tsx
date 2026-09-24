@@ -569,7 +569,7 @@ function PDFViewerComponent({
     [handleDoubleTapOrClick, isMobileOrTablet]
   );
 
-  // Navegación con flechas del teclado
+  // Navegación con flechas y zoom con + / - del teclado
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -581,11 +581,17 @@ function PDFViewerComponent({
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
         e.preventDefault();
         goToPage(pageNumber + 1);
+      } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+        e.preventDefault();
+        setScaleClamped(s => s + 0.1);
+      } else if (e.key === '-' || e.code === 'NumpadSubtract') {
+        e.preventDefault();
+        setScaleClamped(s => s - 0.1);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, pageNumber, goToPage]);
+  }, [isOpen, pageNumber, goToPage, setScaleClamped]);
 
   // Touch listeners with passive: false so preventDefault() works for pinch (evita zoom del navegador)
   useEffect(() => {

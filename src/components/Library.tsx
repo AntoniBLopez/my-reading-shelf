@@ -399,6 +399,13 @@ export function Library({
       )
     : [];
   const folderNameById = new Map(allFolders.map((f) => [f.id, f.name]));
+  const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+  const folderCategoryNameById = new Map(
+    folders.map((f) => [
+      f.id,
+      f.category_id ? categoryNameById.get(f.category_id) ?? 'Sin categoría' : 'Sin categoría',
+    ])
+  );
   const lastViewedBooks = [...books]
     .filter((book) => Boolean(book.last_viewed_at))
     .sort((a, b) => new Date(b.last_viewed_at ?? 0).getTime() - new Date(a.last_viewed_at ?? 0).getTime())
@@ -984,6 +991,9 @@ export function Library({
                   />
                   <p className="text-xs text-muted-foreground pl-3">
                     Carpeta: {folderNameById.get(book.folder_id) ?? 'Sin carpeta'}
+                    {hasCategories && (
+                      <> · Categoría: {folderCategoryNameById.get(book.folder_id) ?? 'Sin categoría'}</>
+                    )}
                   </p>
                 </div>
               ))}
