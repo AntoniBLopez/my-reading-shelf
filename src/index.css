@@ -255,10 +255,23 @@
   border: 1px solid rgb(82 82 82 / 0.4) !important;
 }
 
+/* PDF viewer scroll + pinch pan */
+.pdf-viewer-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-viewer-scroll--zoomed {
+  touch-action: pan-x pan-y;
+}
+
+.pdf-viewer-pinch-content {
+  will-change: transform;
+}
+
 /* Page-flip book (StPageFlip / react-pageflip) */
 .pdf-page-flipbook {
   margin: 0 auto;
-  touch-action: pan-y pinch-zoom;
+  touch-action: none;
 }
 
 .pdf-flip-page .react-pdf__Page {
