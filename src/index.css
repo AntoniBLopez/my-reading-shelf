@@ -321,8 +321,23 @@
 .pdf-turn-leaf {
   position: relative;
   z-index: 2;
-  transform-style: preserve-3d;
-  -webkit-transform-style: preserve-3d;
+}
+
+.pdf-turn-leaf--covered {
+  visibility: hidden;
+}
+
+.pdf-page-curl {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.pdf-page-curl .stf__parent {
+  width: 100%;
+  height: 100%;
 }
 
 .pdf-turn-scene[data-turn] .pdf-turn-leaf {

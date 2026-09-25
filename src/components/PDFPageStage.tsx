@@ -9,8 +9,8 @@ import React, {
 } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { cn } from '@/lib/utils';
+import { createPageCurl, PageCurlSession } from '@/components/pdfPageCurl';
 
-const TURN_MS = 300;
 const DRAG_START_PX = 18;
 const COMMIT_PROGRESS = 0.28;
 const COMMIT_VELOCITY = 0.55;
@@ -27,6 +27,7 @@ type Gesture = {
   startY: number;
   startT: number;
   lastX: number;
+  lastY: number;
   lastT: number;
   vx: number;
   dir: TurnDirection | null;
@@ -60,14 +61,17 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
 ) {
   const sceneRef = useRef<HTMLDivElement>(null);
   const leafRef = useRef<HTMLDivElement>(null);
+  const prevUnderRef = useRef<HTMLDivElement>(null);
+  const nextUnderRef = useRef<HTMLDivElement>(null);
+  const curlRef = useRef<PageCurlSession | null>(null);
+  const curlGenRef = useRef(0);
+  const pendingReleaseRef = useRef<{ progress: number; commit: boolean } | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const progressRef = useRef(0);
-  const dirRef = useRef<TurnDirection | null>(null);
   const lockRef = useRef(false);
   const commitOnceRef = useRef(false);
   const pendingLeafRef = useRef<number | null>(null);
-  const animGenRef = useRef(0);
-  const animRafRef = useRef<number | null>(null);
+  const curlLaunchRef = useRef(false);
   const leafPageRef = useRef(props.pageNumber);
   const numPagesRef = useRef(props.numPages);
   const onCommitRef = useRef(props.onCommit);
@@ -88,67 +92,37 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
 
   const file = useMemo(() => props.pdfUrl, [props.pdfUrl]);
 
-  const cancelAnim = useCallback(() => {
-    animGenRef.current += 1;
-    if (animRafRef.current != null) {
-      cancelAnimationFrame(animRafRef.current);
-      animRafRef.current = null;
-    }
+  const coverLeaf = useCallback((covered: boolean) => {
+    leafRef.current?.classList.toggle('pdf-turn-leaf--covered', covered);
   }, []);
 
-  const applyProgress = useCallback((dir: TurnDirection, progress: number) => {
-    const scene = sceneRef.current;
-    const leaf = leafRef.current;
-    if (!scene || !leaf) return;
-    const p = Math.max(0, Math.min(1, progress));
-    progressRef.current = p;
-    dirRef.current = dir;
-    if (p < 0.001) {
-      delete scene.dataset.turn;
-      scene.style.removeProperty('--turn-shade');
-      leaf.style.transform = '';
-      leaf.style.transformOrigin = '';
-      return;
-    }
-    scene.dataset.turn = dir;
-    scene.style.setProperty('--turn-shade', String(Math.sin(p * Math.PI) * 0.55));
-    const angle = dir === 'next' ? -180 * p : 180 * p;
-    leaf.style.transformOrigin = dir === 'next' ? 'left center' : 'right center';
-    leaf.style.transform = `rotateY(${angle}deg)`;
-  }, []);
-
-  const applyReset = useCallback(() => {
-    progressRef.current = 0;
-    dirRef.current = null;
-    const scene = sceneRef.current;
-    const leaf = leafRef.current;
-    if (scene) {
-      delete scene.dataset.turn;
-      scene.style.removeProperty('--turn-shade');
-    }
-    if (leaf) {
-      leaf.style.transform = '';
-      leaf.style.transformOrigin = '';
-    }
-  }, []);
+  const dropCurl = useCallback(() => {
+    curlGenRef.current += 1;
+    curlRef.current?.destroy();
+    curlRef.current = null;
+    curlLaunchRef.current = false;
+    pendingReleaseRef.current = null;
+    coverLeaf(false);
+  }, [coverLeaf]);
 
   const finishSettle = useCallback(() => {
     const target = pendingLeafRef.current;
     if (target == null) return;
     pendingLeafRef.current = null;
-    applyReset();
+    dropCurl();
     setSlots({ leaf: target, next: target + 1, prev: target - 1 });
     lockRef.current = false;
     commitOnceRef.current = false;
+    progressRef.current = 0;
     onTurnActiveRef.current?.(false);
-  }, [applyReset]);
+  }, [dropCurl]);
 
   const settleTo = useCallback(
-    (dir: TurnDirection, target: number) => {
+    (target: number) => {
       if (commitOnceRef.current) return;
       const max = numPagesRef.current;
       if (target < 1 || target > max) {
-        applyReset();
+        dropCurl();
         lockRef.current = false;
         onTurnActiveRef.current?.(false);
         return;
@@ -156,51 +130,88 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       commitOnceRef.current = true;
       lockRef.current = true;
       pendingLeafRef.current = target;
-      applyProgress(dir, 1);
       setSlots((current) => ({ ...current, leaf: target }));
       onCommitRef.current(target);
       window.setTimeout(() => {
         if (pendingLeafRef.current === target) finishSettle();
       }, 500);
     },
-    [applyProgress, applyReset, finishSettle]
+    [dropCurl, finishSettle]
   );
 
-  const animateProgress = useCallback(
-    (from: number, to: number, dir: TurnDirection, onDone: () => void) => {
-      cancelAnim();
-      const gen = animGenRef.current;
-      const start = performance.now();
-      const duration = Math.max(140, TURN_MS * Math.abs(to - from));
-      const tick = (now: number) => {
-        if (animGenRef.current !== gen) return;
-        const t = Math.min(1, (now - start) / duration);
-        const eased = 1 - (1 - t) ** 3;
-        applyProgress(dir, from + (to - from) * eased);
-        if (t < 1) animRafRef.current = requestAnimationFrame(tick);
-        else onDone();
-      };
-      animRafRef.current = requestAnimationFrame(tick);
+  const pageCanvas = (root: HTMLElement | null) => {
+    const canvas = root?.querySelector('canvas');
+    if (!canvas || canvas.width < 2 || canvas.height < 2) return null;
+    return canvas;
+  };
+
+  const launchCurl = useCallback(
+    (dir: TurnDirection, target: number, auto: boolean) => {
+      const scene = sceneRef.current;
+      const leaf = leafRef.current;
+      const current = pageCanvas(leaf);
+      const other = pageCanvas(dir === 'next' ? nextUnderRef.current : prevUnderRef.current);
+      if (!scene || !leaf || !current || !other) {
+        settleTo(target);
+        return;
+      }
+
+      const gen = ++curlGenRef.current;
+      const rect = leaf.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) {
+        settleTo(target);
+        return;
+      }
+      void createPageCurl({
+        scene,
+        width: rect.width,
+        height: rect.height,
+        direction: dir,
+        current,
+        other,
+        invert: document.documentElement.classList.contains('dark'),
+        onResult: (committed) => {
+          if (gen !== curlGenRef.current) return;
+          curlRef.current = null;
+          if (committed) settleTo(target);
+          else {
+            coverLeaf(false);
+            lockRef.current = false;
+            commitOnceRef.current = false;
+            curlLaunchRef.current = false;
+            progressRef.current = 0;
+            onTurnActiveRef.current?.(false);
+          }
+        },
+      }).then((session) => {
+        if (gen !== curlGenRef.current) {
+          session.destroy();
+          return;
+        }
+        curlRef.current = session;
+        coverLeaf(true);
+        const pending = pendingReleaseRef.current;
+        pendingReleaseRef.current = null;
+        const gesture = gestureRef.current;
+        if (pending) session.release(pending.progress, pending.commit);
+        else if (auto || !gesture?.active) session.release(1, true);
+        else session.move(gesture.lastX, gesture.lastY);
+      }).catch(() => {
+        if (gen !== curlGenRef.current) return;
+        settleTo(target);
+      });
     },
-    [applyProgress, cancelAnim]
+    [coverLeaf, settleTo]
   );
 
   const revertTurn = useCallback(() => {
-    const dir = dirRef.current;
-    const progress = progressRef.current;
     gestureRef.current = null;
     if (pendingLeafRef.current != null) return;
+    dropCurl();
     lockRef.current = false;
-    if (dir && progress > 0.01) {
-      animateProgress(progress, 0, dir, () => {
-        applyReset();
-        onTurnActiveRef.current?.(false);
-      });
-      return;
-    }
-    applyReset();
+    progressRef.current = 0;
     onTurnActiveRef.current?.(false);
-  }, [animateProgress, applyReset]);
+  }, [dropCurl]);
 
   const startTurn = useCallback(
     (dir: TurnDirection) => {
@@ -211,11 +222,11 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       if (target < 1 || target > max) return;
       lockRef.current = true;
       commitOnceRef.current = false;
+      curlLaunchRef.current = true;
       onTurnActiveRef.current?.(true);
-      applyProgress(dir, 0.001);
-      animateProgress(0, 1, dir, () => settleTo(dir, target));
+      launchCurl(dir, target, true);
     },
-    [animateProgress, applyProgress, settleTo]
+    [launchCurl]
   );
 
   useImperativeHandle(
@@ -245,9 +256,9 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     el.addEventListener('touchmove', onMove, { passive: false });
     return () => {
       el.removeEventListener('touchmove', onMove);
-      cancelAnim();
+      dropCurl();
     };
-  }, [cancelAnim]);
+  }, [dropCurl]);
 
   const handleLeafRender = useCallback(
     (page: pdfjs.PDFPageProxy) => {
@@ -270,25 +281,22 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       const progress = progressRef.current;
       const flick =
         gesture.dir === 'next' ? gesture.vx < -COMMIT_VELOCITY : gesture.vx > COMMIT_VELOCITY;
-      const target = gesture.dir === 'next' ? page + 1 : page - 1;
+      const shouldCommit = !blocked && (progress >= COMMIT_PROGRESS || (flick && progress > 0.08));
+      lockRef.current = true;
 
-      if (!blocked && (progress >= COMMIT_PROGRESS || (flick && progress > 0.08))) {
-        lockRef.current = true;
-        const dir = gesture.dir;
-        if (progress >= 0.98) {
-          settleTo(dir, target);
-          return;
-        }
-        animateProgress(progress, 1, dir, () => settleTo(dir, target));
+      if (curlRef.current) {
+        curlRef.current.release(progress, shouldCommit);
         return;
       }
-
-      animateProgress(progress, 0, gesture.dir, () => {
-        applyReset();
+      if (!curlLaunchRef.current || !shouldCommit) {
+        dropCurl();
+        lockRef.current = false;
         onTurnActiveRef.current?.(false);
-      });
+        return;
+      }
+      pendingReleaseRef.current = { progress, commit: true };
     },
-    [animateProgress, applyReset, settleTo]
+    [dropCurl]
   );
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -301,6 +309,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       startY: event.clientY,
       startT: performance.now(),
       lastX: event.clientX,
+      lastY: event.clientY,
       lastT: performance.now(),
       vx: 0,
       dir: null,
@@ -347,6 +356,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       const dt = now - gesture.lastT;
       if (dt > 0) gesture.vx = (event.clientX - gesture.lastX) / dt;
       gesture.lastX = event.clientX;
+      gesture.lastY = event.clientY;
       gesture.lastT = now;
 
       const width = Math.max(1, leafRef.current?.getBoundingClientRect().width ?? 1);
@@ -355,10 +365,18 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       const max = numPagesRef.current;
       const blocked =
         (gesture.dir === 'next' && page >= max) || (gesture.dir === 'prev' && page <= 1);
-      progress = blocked ? Math.min(Math.max(progress, 0), 0.07) : Math.max(0, Math.min(1, progress));
-      applyProgress(gesture.dir, progress);
+      progress = blocked ? 0 : Math.max(0, Math.min(1, progress));
+      progressRef.current = progress;
+
+      if (!blocked && !curlLaunchRef.current) {
+        curlLaunchRef.current = true;
+        lockRef.current = true;
+        const target = gesture.dir === 'next' ? page + 1 : page - 1;
+        launchCurl(gesture.dir, target, false);
+      }
+      curlRef.current?.move(event.clientX, event.clientY);
     },
-    [applyProgress]
+    [launchCurl]
   );
 
   const handlePointerUp = useCallback(
@@ -402,7 +420,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
           onPointerCancel={handlePointerUp}
         >
           {showPrev && (
-            <div className="pdf-turn-under pdf-turn-under--prev" aria-hidden>
+            <div ref={prevUnderRef} className="pdf-turn-under pdf-turn-under--prev" aria-hidden>
               <Page
                 {...pageProps}
                 pageNumber={slots.prev}
@@ -412,7 +430,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
             </div>
           )}
           {showNext && (
-            <div className="pdf-turn-under pdf-turn-under--next" aria-hidden>
+            <div ref={nextUnderRef} className="pdf-turn-under pdf-turn-under--next" aria-hidden>
               <Page
                 {...pageProps}
                 pageNumber={slots.next}
@@ -422,7 +440,6 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
             </div>
           )}
           <div ref={leafRef} className="pdf-turn-leaf">
-            <div className="pdf-turn-shade" />
             <Page
               {...pageProps}
               pageNumber={slots.leaf}
