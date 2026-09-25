@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { pdfjs } from 'react-pdf';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useTheme } from 'next-themes';
 import { Book } from '@/types/library';
@@ -30,20 +30,15 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PDFPageFlipOverlay } from '@/components/PDFPageFlipOverlay';
+import { PDFPageStage, PDFPageStageHandle } from '@/components/PDFPageStage';
 import 'react-pdf/src/Page/AnnotationLayer.css';
 import 'react-pdf/src/Page/TextLayer.css';
 
 // Keep PDF worker local so viewer works without internet.
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
-const pdfDocOptions = {
-  wasmUrl: `${import.meta.env.BASE_URL}wasm/`,
-};
-
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
-const SWIPE_THRESHOLD = 60;
 const PDF_LOAD_TIMEOUT_MS = 10000;
 /** Double-tap (Pointer Events): ventana en ms y umbral de movimiento en px para considerar mismo punto */
 const DOUBLE_TAP_DELAY_MS = 450;
@@ -57,58 +52,6 @@ const PAGE_WIDTH_SNAP_PX = 64;
 const PAGE_WIDTH_MIN_DELTA_PX = 48;
 /** Tolerance to treat pinch zoom as "back at toolbar default" */
 const BASE_ZOOM_TOLERANCE = 0.01;
-
-function pdfContentBlockPropsAreEqual(
-  prev: { pdfUrl: string; showBookBorder: boolean; pageNumber: number; pageWidth: number; scale: number },
-  next: { pdfUrl: string; showBookBorder: boolean; pageNumber: number; pageWidth: number; scale: number }
-) {
-  return (
-    prev.pdfUrl === next.pdfUrl &&
-    prev.showBookBorder === next.showBookBorder &&
-    prev.pageNumber === next.pageNumber &&
-    prev.pageWidth === next.pageWidth &&
-    prev.scale === next.scale
-  );
-}
-
-const PDFContentBlock = React.memo(function PDFContentBlock(props: {
-  pdfUrl: string;
-  showBookBorder: boolean;
-  pageNumber: number;
-  pageWidth: number;
-  scale: number;
-  onDocumentLoadSuccess: (args: { numPages: number }) => void;
-  onDocumentLoadError: (error: Error) => void;
-  onItemClick: (args: { pageNumber: number }) => void;
-}) {
-  const file = useMemo(() => props.pdfUrl, [props.pdfUrl]);
-  return (
-    <div
-      className="min-h-full w-full flex items-center justify-center pdf-viewer-pdf-wrapper"
-      data-show-border={props.showBookBorder}
-    >
-      <Document
-        file={file}
-        options={pdfDocOptions}
-        onLoadSuccess={props.onDocumentLoadSuccess}
-        onLoadError={props.onDocumentLoadError}
-        onItemClick={props.onItemClick}
-        loading={null}
-        className={props.showBookBorder ? 'shadow-lg' : ''}
-      >
-        <Page
-          pageNumber={props.pageNumber}
-          width={props.pageWidth}
-          scale={props.scale}
-          loading={null}
-          className="bg-white dark:bg-black"
-          renderTextLayer={true}
-          renderAnnotationLayer={true}
-        />
-      </Document>
-    </div>
-  );
-}, pdfContentBlockPropsAreEqual);
 
 function hasActiveTextSelection(container?: HTMLElement | null): boolean {
   const sel = window.getSelection();
@@ -200,11 +143,8 @@ function PDFViewerComponent({
   const lastRawWidthRef = useRef<number>(600);
   const resizeRafRef = useRef<number | null>(null);
   const isTextSelectedRef = useRef(false);
-  const [flipAnim, setFlipAnim] = useState<{
-    direction: 'next' | 'prev';
-    from: number;
-    to: number;
-  } | null>(null);
+  const stageRef = useRef<PDFPageStageHandle>(null);
+  const [pageTurning, setPageTurning] = useState(false);
 
   scaleRef.current = scale;
   baseScaleRef.current = baseScale;
@@ -289,7 +229,6 @@ function PDFViewerComponent({
       setPdfUrl(null);
       setError(null);
       setPdfLoadedOffline(false);
-      setFlipAnim(null);
     }
   }, [isOpen]);
 
@@ -426,25 +365,14 @@ function PDFViewerComponent({
     setPageNumber(newPage);
   }, [numPages]);
 
-  const goToPageAnimated = useCallback(
-    (direction: 'next' | 'prev') => {
-      if (isTextSelectedRef.current || !isAtBaseZoomRef.current || isPinchingRef.current || flipAnim) {
-        return;
-      }
-      const from = pageNumber;
-      const to = direction === 'next' ? from + 1 : from - 1;
-      if (to < 1 || to > numPages) return;
-      setFlipAnim({ direction, from, to });
-    },
-    [flipAnim, numPages, pageNumber]
-  );
+  const requestTurn = useCallback((direction: 'next' | 'prev') => {
+    stageRef.current?.turn(direction);
+  }, []);
 
-  const handleFlipAnimComplete = useCallback(() => {
-    setFlipAnim((current) => {
-      if (current) goToPage(current.to);
-      return null;
-    });
-  }, [goToPage]);
+  const getCanTurn = useCallback(
+    () => !isTextSelectedRef.current && isAtBaseZoomRef.current && !isPinchingRef.current,
+    []
+  );
 
   // Auto-save progress in background when page changes (debounced, non-blocking)
   useEffect(() => {
@@ -507,6 +435,7 @@ function PDFViewerComponent({
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       // Don't preventDefault on touchstart — Safari iOS can crash/reload the page
+      stageRef.current?.cancel();
       isPinchingRef.current = true;
       pinchStartScaleRef.current = scaleRef.current;
       pinchCurrentRatioRef.current = 1;
@@ -552,20 +481,6 @@ function PDFViewerComponent({
 
         if (wasPinch) {
           commitPinchScale();
-          return;
-        }
-
-        if (start && start.distance === 0 && e.changedTouches[0]) {
-          if (!isAtBaseZoomRef.current || isTextSelectedRef.current) return;
-
-          const end = e.changedTouches[0];
-          const dx = end.clientX - start.x;
-          const dy = end.clientY - start.y;
-          const isHorizontalSwipe = Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy);
-          if (isHorizontalSwipe) {
-            if (dx < 0) goToPageAnimated('next');
-            else goToPageAnimated('prev');
-          }
         }
       } else if (e.touches.length === 1 && touchStartRef.current?.distance > 0) {
         // Lifted one finger after pinch: commit zoom, then treat remaining finger as pan
@@ -588,7 +503,7 @@ function PDFViewerComponent({
         };
       }
     },
-    [commitPinchScale, goToPageAnimated]
+    [commitPinchScale]
   );
 
   /** Toggle barra en fullscreen (usado por doble toque en touch y doble clic en desktop) */
@@ -599,21 +514,21 @@ function PDFViewerComponent({
   /** Doble toque/clic: izquierda = página anterior, derecha = siguiente, centro (solo fullscreen) = toggle barra */
   const handleDoubleTapOrClick = useCallback(
     (clientX: number, containerEl: HTMLDivElement | null) => {
-      if (!containerEl || isTextSelectedRef.current || !isAtBaseZoomRef.current) return;
+      if (!containerEl || !getCanTurn()) return;
       const rect = containerEl.getBoundingClientRect();
       const x = clientX - rect.left;
       const w = rect.width;
       if (w <= 0) return;
       const rel = x / w;
       if (rel < DOUBLE_TAP_LEFT_ZONE) {
-        goToPageAnimated('prev');
+        requestTurn('prev');
       } else if (rel > DOUBLE_TAP_RIGHT_ZONE) {
-        goToPageAnimated('next');
+        requestTurn('next');
       } else if (isFullscreen) {
         toggleFullscreenHeader();
       }
     },
-    [goToPageAnimated, isFullscreen, toggleFullscreenHeader]
+    [getCanTurn, requestTurn, isFullscreen, toggleFullscreenHeader]
   );
 
   /**
@@ -676,10 +591,10 @@ function PDFViewerComponent({
       if (target.closest('input') || target.closest('textarea') || target.isContentEditable) return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
         e.preventDefault();
-        goToPageAnimated('prev');
+        requestTurn('prev');
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
         e.preventDefault();
-        goToPageAnimated('next');
+        requestTurn('next');
       } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
         e.preventDefault();
         setScaleClamped(s => s + 0.1);
@@ -690,7 +605,7 @@ function PDFViewerComponent({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, goToPageAnimated, setScaleClamped]);
+  }, [isOpen, requestTurn, setScaleClamped]);
 
   // Non-passive touchmove on scroll area: block browser zoom during pinch without re-rendering PDF each frame
   useEffect(() => {
@@ -838,7 +753,7 @@ function PDFViewerComponent({
                 variant="outline"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                onClick={() => goToPageAnimated('prev')}
+                onClick={() => requestTurn('prev')}
                 disabled={pageNumber <= 1}
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -863,7 +778,7 @@ function PDFViewerComponent({
                 variant="outline"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                onClick={() => goToPageAnimated('next')}
+                onClick={() => requestTurn('next')}
                 disabled={pageNumber >= numPages}
               >
                 <ChevronRight className="w-4 h-4" />
@@ -937,7 +852,8 @@ function PDFViewerComponent({
           <div
             ref={scrollRef}
             className={cn(
-              'relative flex-1 overflow-auto min-w-0 min-h-0 bg-white dark:bg-black overscroll-contain pdf-viewer-scroll',
+              'relative flex-1 min-w-0 min-h-0 bg-white dark:bg-black overscroll-contain pdf-viewer-scroll',
+              pageTurning ? 'pdf-viewer-scroll--turning' : 'overflow-auto',
               !isAtBaseZoom && 'pdf-viewer-scroll--zoomed'
             )}
           >
@@ -983,29 +899,22 @@ function PDFViewerComponent({
                   ref={pinchContentRef}
                   className="pdf-viewer-pinch-content relative shrink-0"
                 >
-                  <PDFContentBlock
+                  <PDFPageStage
+                    ref={stageRef}
                     pdfUrl={pdfUrl}
-                    showBookBorder={showBookBorder}
-                    pageNumber={flipAnim?.from ?? pageNumber}
+                    pageNumber={pageNumber}
+                    numPages={numPages}
                     pageWidth={pageWidth}
                     scale={scale}
+                    showBookBorder={showBookBorder}
+                    getCanTurn={getCanTurn}
+                    panFree={!isAtBaseZoom}
+                    onCommit={goToPage}
+                    onTurnActive={setPageTurning}
                     onDocumentLoadSuccess={onDocumentLoadSuccess}
                     onDocumentLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}
                   />
-                  {flipAnim && (
-                    <PDFPageFlipOverlay
-                      key={`${flipAnim.from}-${flipAnim.to}`}
-                      pdfUrl={pdfUrl}
-                      direction={flipAnim.direction}
-                      fromPage={flipAnim.from}
-                      toPage={flipAnim.to}
-                      pageWidth={pageWidth}
-                      scale={scale}
-                      showBookBorder={showBookBorder}
-                      onComplete={handleFlipAnimComplete}
-                    />
-                  )}
                 </div>
               )}
             </div>
