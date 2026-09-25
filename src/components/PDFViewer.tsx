@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { pdfjs } from 'react-pdf';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useTheme } from 'next-themes';
 import { Book } from '@/types/library';
@@ -30,12 +30,16 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PDFPageFlipBook, PDFPageFlipBookHandle } from '@/components/PDFPageFlipBook';
+import { PDFPageFlipOverlay } from '@/components/PDFPageFlipOverlay';
 import 'react-pdf/src/Page/AnnotationLayer.css';
 import 'react-pdf/src/Page/TextLayer.css';
 
 // Keep PDF worker local so viewer works without internet.
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+const pdfDocOptions = {
+  wasmUrl: `${import.meta.env.BASE_URL}wasm/`,
+};
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
@@ -53,6 +57,58 @@ const PAGE_WIDTH_SNAP_PX = 64;
 const PAGE_WIDTH_MIN_DELTA_PX = 48;
 /** Tolerance to treat pinch zoom as "back at toolbar default" */
 const BASE_ZOOM_TOLERANCE = 0.01;
+
+function pdfContentBlockPropsAreEqual(
+  prev: { pdfUrl: string; showBookBorder: boolean; pageNumber: number; pageWidth: number; scale: number },
+  next: { pdfUrl: string; showBookBorder: boolean; pageNumber: number; pageWidth: number; scale: number }
+) {
+  return (
+    prev.pdfUrl === next.pdfUrl &&
+    prev.showBookBorder === next.showBookBorder &&
+    prev.pageNumber === next.pageNumber &&
+    prev.pageWidth === next.pageWidth &&
+    prev.scale === next.scale
+  );
+}
+
+const PDFContentBlock = React.memo(function PDFContentBlock(props: {
+  pdfUrl: string;
+  showBookBorder: boolean;
+  pageNumber: number;
+  pageWidth: number;
+  scale: number;
+  onDocumentLoadSuccess: (args: { numPages: number }) => void;
+  onDocumentLoadError: (error: Error) => void;
+  onItemClick: (args: { pageNumber: number }) => void;
+}) {
+  const file = useMemo(() => props.pdfUrl, [props.pdfUrl]);
+  return (
+    <div
+      className="min-h-full w-full flex items-center justify-center pdf-viewer-pdf-wrapper"
+      data-show-border={props.showBookBorder}
+    >
+      <Document
+        file={file}
+        options={pdfDocOptions}
+        onLoadSuccess={props.onDocumentLoadSuccess}
+        onLoadError={props.onDocumentLoadError}
+        onItemClick={props.onItemClick}
+        loading={null}
+        className={props.showBookBorder ? 'shadow-lg' : ''}
+      >
+        <Page
+          pageNumber={props.pageNumber}
+          width={props.pageWidth}
+          scale={props.scale}
+          loading={null}
+          className="bg-white dark:bg-black"
+          renderTextLayer={true}
+          renderAnnotationLayer={true}
+        />
+      </Document>
+    </div>
+  );
+}, pdfContentBlockPropsAreEqual);
 
 function hasActiveTextSelection(container?: HTMLElement | null): boolean {
   const sel = window.getSelection();
@@ -144,7 +200,11 @@ function PDFViewerComponent({
   const lastRawWidthRef = useRef<number>(600);
   const resizeRafRef = useRef<number | null>(null);
   const isTextSelectedRef = useRef(false);
-  const flipBookRef = useRef<PDFPageFlipBookHandle>(null);
+  const [flipAnim, setFlipAnim] = useState<{
+    direction: 'next' | 'prev';
+    from: number;
+    to: number;
+  } | null>(null);
 
   scaleRef.current = scale;
   baseScaleRef.current = baseScale;
@@ -229,6 +289,7 @@ function PDFViewerComponent({
       setPdfUrl(null);
       setError(null);
       setPdfLoadedOffline(false);
+      setFlipAnim(null);
     }
   }, [isOpen]);
 
@@ -367,17 +428,23 @@ function PDFViewerComponent({
 
   const goToPageAnimated = useCallback(
     (direction: 'next' | 'prev') => {
-      if (isTextSelectedRef.current || !isAtBaseZoomRef.current || isPinchingRef.current) return;
-      const flipped =
-        direction === 'next'
-          ? flipBookRef.current?.flipNext()
-          : flipBookRef.current?.flipPrev();
-      if (!flipped) {
-        goToPage(direction === 'next' ? pageNumber + 1 : pageNumber - 1);
+      if (isTextSelectedRef.current || !isAtBaseZoomRef.current || isPinchingRef.current || flipAnim) {
+        return;
       }
+      const from = pageNumber;
+      const to = direction === 'next' ? from + 1 : from - 1;
+      if (to < 1 || to > numPages) return;
+      setFlipAnim({ direction, from, to });
     },
-    [goToPage, pageNumber]
+    [flipAnim, numPages, pageNumber]
   );
+
+  const handleFlipAnimComplete = useCallback(() => {
+    setFlipAnim((current) => {
+      if (current) goToPage(current.to);
+      return null;
+    });
+  }, [goToPage]);
 
   // Auto-save progress in background when page changes (debounced, non-blocking)
   useEffect(() => {
@@ -914,21 +981,31 @@ function PDFViewerComponent({
                 <div
                   key="pdf-viewer-content"
                   ref={pinchContentRef}
-                  className="pdf-viewer-pinch-content shrink-0"
+                  className="pdf-viewer-pinch-content relative shrink-0"
                 >
-                  <PDFPageFlipBook
-                    ref={flipBookRef}
+                  <PDFContentBlock
                     pdfUrl={pdfUrl}
-                    pageNumber={pageNumber}
-                    numPages={numPages}
+                    showBookBorder={showBookBorder}
+                    pageNumber={flipAnim?.from ?? pageNumber}
                     pageWidth={pageWidth}
                     scale={scale}
-                    showBookBorder={showBookBorder}
-                    onPageChange={goToPage}
                     onDocumentLoadSuccess={onDocumentLoadSuccess}
                     onDocumentLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}
                   />
+                  {flipAnim && (
+                    <PDFPageFlipOverlay
+                      key={`${flipAnim.from}-${flipAnim.to}`}
+                      pdfUrl={pdfUrl}
+                      direction={flipAnim.direction}
+                      fromPage={flipAnim.from}
+                      toPage={flipAnim.to}
+                      pageWidth={pageWidth}
+                      scale={scale}
+                      showBookBorder={showBookBorder}
+                      onComplete={handleFlipAnimComplete}
+                    />
+                  )}
                 </div>
               )}
             </div>
