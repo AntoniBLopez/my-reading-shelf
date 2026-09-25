@@ -227,7 +227,7 @@
 /* PDF viewer: todo viene de la clase .dark en <html> (next-themes). Sin lógica de tema en el visor. */
 .pdf-viewer-pdf-wrapper {
   background-color: rgb(255 255 255) !important;
-  contain: layout paint;
+  contain: layout;
   min-height: 0;
 }
 
@@ -253,4 +253,20 @@
 
 .dark .pdf-viewer-pdf-wrapper[data-show-border="true"] .react-pdf__Document {
   border: 1px solid rgb(82 82 82 / 0.4) !important;
+}
+
+/* Page-flip book (StPageFlip / react-pageflip) */
+.pdf-page-flipbook {
+  margin: 0 auto;
+  touch-action: pan-y pinch-zoom;
+}
+
+.pdf-flip-page .react-pdf__Page {
+  margin: 0 !important;
+}
+
+.pdf-flip-page .react-pdf__Page__canvas,
+.pdf-flip-page .react-pdf__Page__textContent,
+.pdf-flip-page .react-pdf__Page__annotations {
+  pointer-events: auto;
 }

@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { pdfjs } from 'react-pdf';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useTheme } from 'next-themes';
 import { Book } from '@/types/library';
@@ -30,17 +30,12 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PDFPageFlipBook, PDFPageFlipBookHandle } from '@/components/PDFPageFlipBook';
 import 'react-pdf/src/Page/AnnotationLayer.css';
 import 'react-pdf/src/Page/TextLayer.css';
 
 // Keep PDF worker local so viewer works without internet.
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-
-// OpenJPEG wasm is required to decode JPEG 2000 images used by many scanned books.
-// Path must match the files copied/served by the pdfjsWasm Vite plugin.
-const pdfDocOptions = {
-  wasmUrl: `${import.meta.env.BASE_URL}wasm/`,
-};
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
@@ -57,58 +52,13 @@ const PAGE_WIDTH_SNAP_PX = 64;
 /** Ignore ResizeObserver updates smaller than this (e.g. scrollbar on theme change) so PDFContentBlock doesn't re-render and Document doesn't reset */
 const PAGE_WIDTH_MIN_DELTA_PX = 48;
 
-/** Solo re-renderiza cuando cambian datos del PDF; ignoramos callbacks para que el cambio de tema no fuerce re-render (los callbacks se invocan por ref). */
-function pdfContentBlockPropsAreEqual(
-  prev: { pdfUrl: string; showBookBorder: boolean; pageNumber: number; pageWidth: number; scale: number },
-  next: { pdfUrl: string; showBookBorder: boolean; pageNumber: number; pageWidth: number; scale: number }
-) {
-  return (
-    prev.pdfUrl === next.pdfUrl &&
-    prev.showBookBorder === next.showBookBorder &&
-    prev.pageNumber === next.pageNumber &&
-    prev.pageWidth === next.pageWidth &&
-    prev.scale === next.scale
-  );
+function hasActiveTextSelection(container?: HTMLElement | null): boolean {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.toString().trim()) return false;
+  if (!container) return true;
+  const node = sel.anchorNode;
+  return !!(node && container.contains(node));
 }
-
-const PDFContentBlock = React.memo(function PDFContentBlock(props: {
-  pdfUrl: string;
-  showBookBorder: boolean;
-  pageNumber: number;
-  pageWidth: number;
-  scale: number;
-  onDocumentLoadSuccess: (args: { numPages: number }) => void;
-  onDocumentLoadError: (error: Error) => void;
-  onItemClick: (args: { pageNumber: number }) => void;
-}) {
-  const file = useMemo(() => props.pdfUrl, [props.pdfUrl]);
-  return (
-    <div
-      className="min-h-full w-full flex items-center justify-center pdf-viewer-pdf-wrapper"
-      data-show-border={props.showBookBorder}
-    >
-      <Document
-        file={file}
-        options={pdfDocOptions}
-        onLoadSuccess={props.onDocumentLoadSuccess}
-        onLoadError={props.onDocumentLoadError}
-        onItemClick={props.onItemClick}
-        loading={null}
-        className={props.showBookBorder ? 'shadow-lg' : ''}
-      >
-        <Page
-          pageNumber={props.pageNumber}
-          width={props.pageWidth}
-          scale={props.scale}
-          loading={null}
-          className="bg-white dark:bg-black"
-          renderTextLayer={true}
-          renderAnnotationLayer={true}
-        />
-      </Document>
-    </div>
-  );
-}, pdfContentBlockPropsAreEqual);
 
 /** Solo el botón de tema usa useTheme(); el libro se estila solo con la clase .dark en <html> (next-themes). */
 function ThemeToggleButton() {
@@ -185,8 +135,26 @@ function PDFViewerComponent({
   const lastPageWidthRef = useRef<number>(600);
   const lastRawWidthRef = useRef<number>(600);
   const resizeRafRef = useRef<number | null>(null);
+  const isTextSelectedRef = useRef(false);
+  const flipBookRef = useRef<PDFPageFlipBookHandle>(null);
 
   scaleRef.current = scale;
+
+  // Track text selection in the PDF so swipe/double-tap navigation is disabled while selecting
+  useEffect(() => {
+    if (!isOpen) {
+      isTextSelectedRef.current = false;
+      return;
+    }
+    const onSelectionChange = () => {
+      isTextSelectedRef.current = hasActiveTextSelection(containerRef.current);
+    };
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', onSelectionChange);
+      isTextSelectedRef.current = false;
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     const mq = typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)') : null;
@@ -361,6 +329,20 @@ function PDFViewerComponent({
     setPageNumber(newPage);
   }, [numPages]);
 
+  const goToPageAnimated = useCallback(
+    (direction: 'next' | 'prev') => {
+      if (isTextSelectedRef.current) return;
+      const flipped =
+        direction === 'next'
+          ? flipBookRef.current?.flipNext()
+          : flipBookRef.current?.flipPrev();
+      if (!flipped) {
+        goToPage(direction === 'next' ? pageNumber + 1 : pageNumber - 1);
+      }
+    },
+    [goToPage, pageNumber]
+  );
+
   // Auto-save progress in background when page changes (debounced, non-blocking)
   useEffect(() => {
     if (!isOpen || numPages <= 0) return;
@@ -475,9 +457,9 @@ function PDFViewerComponent({
           const dx = end.clientX - start.x;
           const dy = end.clientY - start.y;
           const isHorizontalSwipe = Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy);
-          if (isHorizontalSwipe) {
-            if (dx < 0) goToPage(pageNumber + 1);
-            else goToPage(pageNumber - 1);
+          if (isHorizontalSwipe && !isTextSelectedRef.current) {
+            if (dx < 0) goToPageAnimated('next');
+            else goToPageAnimated('prev');
           }
         }
       }
@@ -490,7 +472,7 @@ function PDFViewerComponent({
         distance: dist > 0 ? dist : 1,
       };
     }
-  }, [goToPage, pageNumber]);
+  }, [goToPageAnimated]);
 
   /** Toggle barra en fullscreen (usado por doble toque en touch y doble clic en desktop) */
   const toggleFullscreenHeader = useCallback(() => {
@@ -500,21 +482,21 @@ function PDFViewerComponent({
   /** Doble toque/clic: izquierda = página anterior, derecha = siguiente, centro (solo fullscreen) = toggle barra */
   const handleDoubleTapOrClick = useCallback(
     (clientX: number, containerEl: HTMLDivElement | null) => {
-      if (!containerEl) return;
+      if (!containerEl || isTextSelectedRef.current) return;
       const rect = containerEl.getBoundingClientRect();
       const x = clientX - rect.left;
       const w = rect.width;
       if (w <= 0) return;
       const rel = x / w;
       if (rel < DOUBLE_TAP_LEFT_ZONE) {
-        goToPage(pageNumber - 1);
+        goToPageAnimated('prev');
       } else if (rel > DOUBLE_TAP_RIGHT_ZONE) {
-        goToPage(pageNumber + 1);
+        goToPageAnimated('next');
       } else if (isFullscreen) {
         toggleFullscreenHeader();
       }
     },
-    [goToPage, pageNumber, isFullscreen, toggleFullscreenHeader]
+    [goToPageAnimated, isFullscreen, toggleFullscreenHeader]
   );
 
   /**
@@ -577,10 +559,10 @@ function PDFViewerComponent({
       if (target.closest('input') || target.closest('textarea') || target.isContentEditable) return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
         e.preventDefault();
-        goToPage(pageNumber - 1);
+        goToPageAnimated('prev');
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
         e.preventDefault();
-        goToPage(pageNumber + 1);
+        goToPageAnimated('next');
       } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
         e.preventDefault();
         setScaleClamped(s => s + 0.1);
@@ -591,7 +573,7 @@ function PDFViewerComponent({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, pageNumber, goToPage, setScaleClamped]);
+  }, [isOpen, goToPageAnimated, setScaleClamped]);
 
   // Touch listeners with passive: false so preventDefault() works for pinch (evita zoom del navegador)
   useEffect(() => {
@@ -739,7 +721,7 @@ function PDFViewerComponent({
                 variant="outline"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                onClick={() => goToPage(pageNumber - 1)}
+                onClick={() => goToPageAnimated('prev')}
                 disabled={pageNumber <= 1}
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -764,7 +746,7 @@ function PDFViewerComponent({
                 variant="outline"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                onClick={() => goToPage(pageNumber + 1)}
+                onClick={() => goToPageAnimated('next')}
                 disabled={pageNumber >= numPages}
               >
                 <ChevronRight className="w-4 h-4" />
@@ -872,13 +854,16 @@ function PDFViewerComponent({
               )}
 
               {pdfUrl && !error && (
-                <div key="pdf-viewer-content">
-                  <PDFContentBlock
+                <div key="pdf-viewer-content" className="flex items-center justify-center min-h-full w-full">
+                  <PDFPageFlipBook
+                    ref={flipBookRef}
                     pdfUrl={pdfUrl}
-                    showBookBorder={showBookBorder}
                     pageNumber={pageNumber}
+                    numPages={numPages}
                     pageWidth={pageWidth}
                     scale={scale}
+                    showBookBorder={showBookBorder}
+                    onPageChange={goToPage}
                     onDocumentLoadSuccess={onDocumentLoadSuccess}
                     onDocumentLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}
