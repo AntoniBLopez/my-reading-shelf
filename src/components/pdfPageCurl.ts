@@ -160,8 +160,10 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   let settled = false;
   let removed = false;
   let primed = false;
+  let shown = false;
   let retried = false;
   let wantCommit = false;
+  let queuedRelease: { progress: number; commit: boolean } | null = null;
   let last: CurlPoint = {
     x: args.width * 0.9,
     y: args.height * 0.72,
@@ -259,7 +261,11 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
           return;
         }
         host.classList.add('pdf-page-curl--ready');
+        shown = true;
         args.onVisible?.();
+        const queued = queuedRelease;
+        queuedRelease = null;
+        if (queued) releaseNow(queued.progress, queued.commit);
         return;
       }
       if (performance.now() - started > 450) return;
@@ -307,33 +313,43 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
     window.requestAnimationFrame(frame);
   };
 
+  const releaseNow = (progress: number, shouldCommit: boolean) => {
+    if (settled) return;
+    wantCommit = shouldCommit;
+    if (!shouldCommit) {
+      if (!primed) {
+        finish(false);
+        return;
+      }
+      const back = {
+        x: args.width * 0.98,
+        y: last.y,
+      };
+      flip.userMove(back, true);
+      flip.userStop(back, false);
+      return;
+    }
+    if (!primed) {
+      playAuto();
+      return;
+    }
+    if (last.x <= 0) flip.userStop(last, false);
+    else glideToCommit();
+  };
+
   return {
     move(clientX, clientY) {
       if (settled || !armed) return;
       track(localPoint(clientX, clientY));
     },
-    release(_progress, shouldCommit) {
+    release(progress, shouldCommit) {
       if (settled) return;
-      wantCommit = shouldCommit;
-      if (!shouldCommit) {
-        if (!primed) {
-          finish(false);
-          return;
-        }
-        const back = {
-          x: args.width * 0.98,
-          y: last.y,
-        };
-        flip.userMove(back, true);
-        flip.userStop(back, false);
+      if (!shown) {
+        wantCommit = shouldCommit;
+        queuedRelease = { progress, commit: shouldCommit };
         return;
       }
-      if (!primed) {
-        playAuto();
-        return;
-      }
-      if (last.x <= 0) flip.userStop(last, false);
-      else glideToCommit();
+      releaseNow(progress, shouldCommit);
     },
     destroy() {
       settled = true;

@@ -63,6 +63,8 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const leafRef = useRef<HTMLDivElement>(null);
   const prevUnderRef = useRef<HTMLDivElement>(null);
   const nextUnderRef = useRef<HTMLDivElement>(null);
+  const behindRef = useRef<HTMLDivElement>(null);
+  const aheadRef = useRef<HTMLDivElement>(null);
   const curlRef = useRef<PageCurlSession | null>(null);
   const curlGenRef = useRef(0);
   const pendingReleaseRef = useRef<{ progress: number; commit: boolean; x: number; y: number } | null>(null);
@@ -87,10 +89,14 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     leaf: props.pageNumber,
     next: props.pageNumber + 1,
     prev: props.pageNumber - 1,
+    ahead: props.pageNumber + 2,
+    behind: props.pageNumber - 2,
   }));
 
   leafPageRef.current = slots.leaf;
   numPagesRef.current = props.numPages;
+  const slotsRef = useRef(slots);
+  slotsRef.current = slots;
 
   const file = useMemo(() => props.pdfUrl, [props.pdfUrl]);
 
@@ -114,7 +120,13 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     pendingLeafRef.current = null;
     if (turnTargetRef.current === target) turnTargetRef.current = null;
     dropCurl();
-    setSlots({ leaf: target, next: target + 1, prev: target - 1 });
+    setSlots({
+      leaf: target,
+      next: target + 1,
+      prev: target - 1,
+      ahead: target + 2,
+      behind: target - 2,
+    });
     lockRef.current = false;
     commitOnceRef.current = false;
     progressRef.current = 0;
@@ -153,50 +165,57 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     [dropCurl, rememberSettle]
   );
 
-  const jumpTo = useCallback(
-    (target: number) => {
-      const max = numPagesRef.current;
-      if (target < 1 || target > max) {
-        dropCurl();
-        lockRef.current = false;
-        turnTargetRef.current = null;
-        onTurnActiveRef.current?.(false);
-        return;
-      }
-      dropCurl();
-      commitOnceRef.current = true;
-      lockRef.current = true;
-      setSlots({ leaf: target, next: target + 1, prev: target - 1 });
-      onCommitRef.current(target);
-      onTurnActiveRef.current?.(false);
-      rememberSettle(target);
-    },
-    [dropCurl, rememberSettle]
-  );
-
   const pageCanvas = (root: HTMLElement | null) => {
     const canvas = root?.querySelector('canvas');
     if (!canvas || canvas.width < 2 || canvas.height < 2) return null;
     return canvas;
   };
 
+  const findCanvas = (page: number) => {
+    const roots = [leafRef, nextUnderRef, prevUnderRef, aheadRef, behindRef];
+    for (const root of roots) {
+      const canvas = pageCanvas(root.current);
+      if (canvas && Number(canvas.dataset.page) === page) return canvas;
+    }
+    const current = slotsRef.current;
+    const pairs: [number, HTMLElement | null][] = [
+      [current.leaf, leafRef.current],
+      [current.next, nextUnderRef.current],
+      [current.prev, prevUnderRef.current],
+      [current.ahead, aheadRef.current],
+      [current.behind, behindRef.current],
+    ];
+    for (const [slotPage, root] of pairs) {
+      if (slotPage !== page) continue;
+      const canvas = pageCanvas(root);
+      if (!canvas) continue;
+      const stamped = Number(canvas.dataset.page);
+      if (stamped && stamped !== page) continue;
+      canvas.dataset.page = String(page);
+      return canvas;
+    }
+    return null;
+  };
+
   const launchCurl = useCallback(
-    (dir: TurnDirection, target: number, auto: boolean) => {
+    (dir: TurnDirection, target: number, auto: boolean, fromPage?: number, alreadyCommitted = false) => {
       const scene = sceneRef.current;
       const leaf = leafRef.current;
-      const current = pageCanvas(leaf);
-      const other = pageCanvas(dir === 'next' ? nextUnderRef.current : prevUnderRef.current);
-      if (!scene || !leaf || !current || !other) {
-        settleTo(target);
-        return;
+      const from = fromPage ?? leafPageRef.current;
+      const current = findCanvas(from);
+      const other = findCanvas(target);
+      if (!scene || !leaf || !current || !other || current === other) {
+        if (!auto) settleTo(target);
+        return false;
       }
 
       const gen = ++curlGenRef.current;
       const rect = leaf.getBoundingClientRect();
       if (rect.width < 2 || rect.height < 2) {
-        settleTo(target);
-        return;
+        if (!auto) settleTo(target);
+        return false;
       }
+      curlLaunchRef.current = true;
       void createPageCurl({
         scene,
         width: rect.width,
@@ -208,20 +227,30 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         onVisible: () => {
           if (gen !== curlGenRef.current) return;
           coverLeaf(true);
+          if (!alreadyCommitted) return;
+          setSlots({
+            leaf: target,
+            next: target + 1,
+            prev: target - 1,
+            ahead: target + 2,
+            behind: target - 2,
+          });
         },
         onResult: (committed) => {
           if (gen !== curlGenRef.current) return;
           curlRef.current = null;
-          if (committed) settleTo(target);
-          else {
-            coverLeaf(false);
-            lockRef.current = false;
-            commitOnceRef.current = false;
-            curlLaunchRef.current = false;
-            if (turnTargetRef.current === target) turnTargetRef.current = null;
-            progressRef.current = 0;
-            onTurnActiveRef.current?.(false);
+          curlLaunchRef.current = false;
+          if (committed && !alreadyCommitted) {
+            settleTo(target);
+            return;
           }
+          coverLeaf(false);
+          if (turnTargetRef.current !== target) return;
+          lockRef.current = false;
+          commitOnceRef.current = false;
+          progressRef.current = 0;
+          if (!committed) turnTargetRef.current = null;
+          onTurnActiveRef.current?.(false);
         },
       }).then((session) => {
         if (gen !== curlGenRef.current) {
@@ -239,8 +268,9 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         else session.move(gesture.lastX, gesture.lastY);
       }).catch(() => {
         if (gen !== curlGenRef.current) return;
-        settleTo(target);
+        if (!alreadyCommitted) settleTo(target);
       });
+      return true;
     },
     [coverLeaf, settleTo]
   );
@@ -261,19 +291,57 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       const target = dir === 'next' ? from + 1 : from - 1;
       const max = numPagesRef.current;
       if (target < 1 || target > max) return;
-      const busy = lockRef.current || curlLaunchRef.current || curlRef.current != null;
-      if (busy) {
-        jumpTo(target);
-        return;
-      }
+
+      curlRef.current?.destroy();
+      curlRef.current = null;
+      sceneRef.current?.querySelectorAll('.pdf-page-curl').forEach((node) => node.remove());
+      coverLeaf(false);
+      pendingReleaseRef.current = null;
+      curlLaunchRef.current = false;
+      curlGenRef.current += 1;
+
       turnTargetRef.current = target;
       lockRef.current = true;
-      commitOnceRef.current = false;
-      curlLaunchRef.current = true;
-      onTurnActiveRef.current?.(true);
-      launchCurl(dir, target, true);
+      commitOnceRef.current = true;
+
+      const showPage = () => {
+        onCommitRef.current(target);
+        setSlots({
+          leaf: target,
+          next: target + 1,
+          prev: target - 1,
+          ahead: target + 2,
+          behind: target - 2,
+        });
+      };
+
+      const tryStart = (attempt: number) => {
+        if (turnTargetRef.current !== target) return;
+        if (launchCurl(dir, target, true, from, true)) {
+          onCommitRef.current(target);
+          onTurnActiveRef.current?.(true);
+          return;
+        }
+        if (!findCanvas(target) || !findCanvas(from)) {
+          const missing = findCanvas(target) ? from : target;
+          setSlots((current) => {
+            const rendered = [current.leaf, current.next, current.prev, current.ahead, current.behind];
+            if (rendered.includes(missing)) return current;
+            return { ...current, ahead: missing };
+          });
+        }
+        if (attempt < 10) {
+          window.requestAnimationFrame(() => tryStart(attempt + 1));
+          return;
+        }
+        showPage();
+        lockRef.current = false;
+        commitOnceRef.current = false;
+        onTurnActiveRef.current?.(false);
+      };
+      tryStart(0);
     },
-    [jumpTo, launchCurl]
+    [coverLeaf, launchCurl]
   );
 
   useImperativeHandle(
@@ -291,6 +359,8 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       leaf: props.pageNumber,
       next: props.pageNumber + 1,
       prev: props.pageNumber - 1,
+      ahead: props.pageNumber + 2,
+      behind: props.pageNumber - 2,
     });
   }, [props.pageNumber]);
 
@@ -307,8 +377,14 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     };
   }, [dropCurl]);
 
+  const stampPage = (root: HTMLElement | null, page: number) => {
+    const canvas = root?.querySelector('canvas');
+    if (canvas) canvas.dataset.page = String(page);
+  };
+
   const handleLeafRender = useCallback(
     (page: pdfjs.PDFPageProxy) => {
+      stampPage(leafRef.current, page.pageNumber);
       if (pendingLeafRef.current != null && page.pageNumber === pendingLeafRef.current) {
         finishSettle();
       }
@@ -446,8 +522,11 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     className: 'bg-white dark:bg-black',
   };
 
-  const showPrev = props.numPages > 0 && slots.prev >= 1 && slots.prev <= props.numPages;
-  const showNext = props.numPages > 0 && slots.next >= 1 && slots.next <= props.numPages;
+  const inBook = (page: number) => props.numPages > 0 && page >= 1 && page <= props.numPages;
+  const showPrev = inBook(slots.prev);
+  const showNext = inBook(slots.next);
+  const showBehind = inBook(slots.behind);
+  const showAhead = inBook(slots.ahead);
 
   return (
     <div className="pdf-viewer-pdf-wrapper" data-show-border={props.showBookBorder}>
@@ -468,6 +547,17 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
+          {showBehind && (
+            <div ref={behindRef} className="pdf-turn-under" aria-hidden>
+              <Page
+                {...pageProps}
+                pageNumber={slots.behind}
+                renderTextLayer={false}
+                renderAnnotationLayer={false}
+                onRenderSuccess={(page) => stampPage(behindRef.current, page.pageNumber)}
+              />
+            </div>
+          )}
           {showPrev && (
             <div ref={prevUnderRef} className="pdf-turn-under pdf-turn-under--prev" aria-hidden>
               <Page
@@ -475,6 +565,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
                 pageNumber={slots.prev}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
+                onRenderSuccess={(page) => stampPage(prevUnderRef.current, page.pageNumber)}
               />
             </div>
           )}
@@ -485,6 +576,18 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
                 pageNumber={slots.next}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
+                onRenderSuccess={(page) => stampPage(nextUnderRef.current, page.pageNumber)}
+              />
+            </div>
+          )}
+          {showAhead && (
+            <div ref={aheadRef} className="pdf-turn-under" aria-hidden>
+              <Page
+                {...pageProps}
+                pageNumber={slots.ahead}
+                renderTextLayer={false}
+                renderAnnotationLayer={false}
+                onRenderSuccess={(page) => stampPage(aheadRef.current, page.pageNumber)}
               />
             </div>
           )}
