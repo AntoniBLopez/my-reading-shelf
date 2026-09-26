@@ -35,6 +35,64 @@ function snapshotCanvas(source: HTMLCanvasElement, invert: boolean, mirror: bool
   return copy.toDataURL('image/jpeg', 0.86);
 }
 
+function isOpaqueWhite(style: CanvasRenderingContext2D['fillStyle']): boolean {
+  if (typeof style !== 'string') return false;
+  const value = style.replace(/\s/g, '').toLowerCase();
+  return value === 'white' || value === '#fff' || value === '#ffffff' || value === 'rgb(255,255,255)';
+}
+
+function shadowAlpha(color: string): number | null {
+  const match = /rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*([0-9.]+)\s*\)/i.exec(color);
+  if (!match) return null;
+  const alpha = Number(match[1]);
+  return Number.isFinite(alpha) ? alpha : null;
+}
+
+/** Light mode: keep the black crease, but well below the library's 0.5 default. */
+function softenLightShadow(color: string): string {
+  const alpha = shadowAlpha(color);
+  if (alpha == null) return color;
+  return `rgba(0, 0, 0, ${Math.min(0.18, alpha * 0.36).toFixed(3)})`;
+}
+
+/** Dark mode: a black crease on a black page disappears. Use a faint light edge instead. */
+function softenDarkShadow(color: string): string {
+  const alpha = shadowAlpha(color);
+  if (alpha == null) return color;
+  return `rgba(255, 255, 255, ${Math.min(0.14, alpha * 0.28).toFixed(3)})`;
+}
+
+function adaptCurlCanvas(host: HTMLElement, dark: boolean) {
+  const canvas = host.querySelector('canvas');
+  const context = canvas?.getContext('2d');
+  if (!context) return;
+
+  const soften = dark ? softenDarkShadow : softenLightShadow;
+  const createLinearGradient = context.createLinearGradient.bind(context);
+  context.createLinearGradient = (x0, y0, x1, y1) => {
+    const gradient = createLinearGradient(x0, y0, x1, y1);
+    const addColorStop = gradient.addColorStop.bind(gradient);
+    gradient.addColorStop = (offset, color) => {
+      addColorStop(offset, soften(String(color)));
+    };
+    return gradient;
+  };
+
+  if (!dark) return;
+
+  const fillRect = context.fillRect.bind(context);
+  context.fillRect = (x, y, width, height) => {
+    if (!isOpaqueWhite(context.fillStyle)) {
+      fillRect(x, y, width, height);
+      return;
+    }
+    const previous = context.fillStyle;
+    context.fillStyle = '#000000';
+    fillRect(x, y, width, height);
+    context.fillStyle = previous;
+  };
+}
+
 function preload(src: string): Promise<void> {
   return new Promise((resolve) => {
     const image = new Image();
@@ -73,7 +131,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
     usePortrait: true,
     showCover: false,
     drawShadow: true,
-    maxShadowOpacity: 0.55,
+    maxShadowOpacity: args.invert ? 0.5 : 0.28,
     flippingTime: 520,
     useMouseEvents: false,
     showPageCorners: false,
@@ -203,6 +261,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
     };
     flip.on('init', done);
     flip.loadFromImages(images);
+    adaptCurlCanvas(host, args.invert);
     window.setTimeout(done, 80);
   });
   armed = true;

@@ -71,6 +71,8 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const lockRef = useRef(false);
   const commitOnceRef = useRef(false);
   const pendingLeafRef = useRef<number | null>(null);
+  const turnTargetRef = useRef<number | null>(null);
+  const settleGenRef = useRef(0);
   const curlLaunchRef = useRef(false);
   const leafPageRef = useRef(props.pageNumber);
   const numPagesRef = useRef(props.numPages);
@@ -110,6 +112,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     const target = pendingLeafRef.current;
     if (target == null) return;
     pendingLeafRef.current = null;
+    if (turnTargetRef.current === target) turnTargetRef.current = null;
     dropCurl();
     setSlots({ leaf: target, next: target + 1, prev: target - 1 });
     lockRef.current = false;
@@ -117,6 +120,19 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     progressRef.current = 0;
     onTurnActiveRef.current?.(false);
   }, [dropCurl]);
+
+  const rememberSettle = useCallback(
+    (target: number) => {
+      const gen = ++settleGenRef.current;
+      pendingLeafRef.current = target;
+      turnTargetRef.current = target;
+      window.setTimeout(() => {
+        if (settleGenRef.current !== gen) return;
+        if (pendingLeafRef.current === target) finishSettle();
+      }, 500);
+    },
+    [finishSettle]
+  );
 
   const settleTo = useCallback(
     (target: number) => {
@@ -130,14 +146,32 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       }
       commitOnceRef.current = true;
       lockRef.current = true;
-      pendingLeafRef.current = target;
       setSlots((current) => ({ ...current, leaf: target }));
       onCommitRef.current(target);
-      window.setTimeout(() => {
-        if (pendingLeafRef.current === target) finishSettle();
-      }, 500);
+      rememberSettle(target);
     },
-    [dropCurl, finishSettle]
+    [dropCurl, rememberSettle]
+  );
+
+  const jumpTo = useCallback(
+    (target: number) => {
+      const max = numPagesRef.current;
+      if (target < 1 || target > max) {
+        dropCurl();
+        lockRef.current = false;
+        turnTargetRef.current = null;
+        onTurnActiveRef.current?.(false);
+        return;
+      }
+      dropCurl();
+      commitOnceRef.current = true;
+      lockRef.current = true;
+      setSlots({ leaf: target, next: target + 1, prev: target - 1 });
+      onCommitRef.current(target);
+      onTurnActiveRef.current?.(false);
+      rememberSettle(target);
+    },
+    [dropCurl, rememberSettle]
   );
 
   const pageCanvas = (root: HTMLElement | null) => {
@@ -170,7 +204,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         direction: dir,
         current,
         other,
-        invert: false,
+        invert: document.documentElement.classList.contains('dark'),
         onResult: (committed) => {
           if (gen !== curlGenRef.current) return;
           curlRef.current = null;
@@ -180,6 +214,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
             lockRef.current = false;
             commitOnceRef.current = false;
             curlLaunchRef.current = false;
+            if (turnTargetRef.current === target) turnTargetRef.current = null;
             progressRef.current = 0;
             onTurnActiveRef.current?.(false);
           }
@@ -216,18 +251,24 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
 
   const startTurn = useCallback(
     (dir: TurnDirection) => {
-      if (lockRef.current || gestureRef.current?.active) return;
-      const from = leafPageRef.current;
+      if (gestureRef.current?.active) return;
+      const from = turnTargetRef.current ?? leafPageRef.current;
       const target = dir === 'next' ? from + 1 : from - 1;
       const max = numPagesRef.current;
       if (target < 1 || target > max) return;
+      const busy = lockRef.current || curlLaunchRef.current || curlRef.current != null;
+      if (busy) {
+        jumpTo(target);
+        return;
+      }
+      turnTargetRef.current = target;
       lockRef.current = true;
       commitOnceRef.current = false;
       curlLaunchRef.current = true;
       onTurnActiveRef.current?.(true);
       launchCurl(dir, target, true);
     },
-    [launchCurl]
+    [jumpTo, launchCurl]
   );
 
   useImperativeHandle(

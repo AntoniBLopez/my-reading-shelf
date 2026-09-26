@@ -251,6 +251,11 @@
   filter: invert(1) !important;
 }
 
+/* The curl canvas paints its own dark page. Leaving invert on turns its black shadows white. */
+.dark .pdf-viewer-pdf-wrapper .pdf-page-curl canvas {
+  filter: none !important;
+}
+
 .dark .pdf-viewer-pdf-wrapper[data-show-border="true"] .react-pdf__Document {
   border: 1px solid rgb(82 82 82 / 0.4) !important;
 }
