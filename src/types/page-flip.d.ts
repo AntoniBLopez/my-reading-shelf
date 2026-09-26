@@ -9,6 +9,8 @@ declare module 'page-flip/dist/js/page-flip.module.js' {
     flipNext(corner?: 'top' | 'bottom'): void;
     flipPrev(corner?: 'top' | 'bottom'): void;
     getCurrentPageIndex(): number;
+    getPageCount(): number;
+    getPage(index: number): { isLoad?: boolean; image?: HTMLImageElement };
     destroy(): void;
   }
 }

@@ -100,6 +100,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     curlGenRef.current += 1;
     curlRef.current?.destroy();
     curlRef.current = null;
+    sceneRef.current?.querySelectorAll('.pdf-page-curl').forEach((node) => node.remove());
     curlLaunchRef.current = false;
     pendingReleaseRef.current = null;
     coverLeaf(false);
@@ -169,7 +170,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         direction: dir,
         current,
         other,
-        invert: document.documentElement.classList.contains('dark'),
+        invert: false,
         onResult: (committed) => {
           if (gen !== curlGenRef.current) return;
           curlRef.current = null;

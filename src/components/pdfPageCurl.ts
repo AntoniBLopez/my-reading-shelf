@@ -20,13 +20,17 @@ type CreatePageCurlArgs = {
   onResult: (committed: boolean) => void;
 };
 
-function snapshotCanvas(source: HTMLCanvasElement, invert: boolean): string {
+function snapshotCanvas(source: HTMLCanvasElement, invert: boolean, mirror: boolean): string {
   const copy = document.createElement('canvas');
   copy.width = source.width;
   copy.height = source.height;
   const context = copy.getContext('2d');
   if (!context) return source.toDataURL('image/jpeg', 0.86);
   if (invert) context.filter = 'invert(1)';
+  if (mirror) {
+    context.translate(copy.width, 0);
+    context.scale(-1, 1);
+  }
   context.drawImage(source, 0, 0);
   return copy.toDataURL('image/jpeg', 0.86);
 }
@@ -41,8 +45,9 @@ function preload(src: string): Promise<void> {
 }
 
 export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurlSession> {
-  const currentUrl = snapshotCanvas(args.current, args.invert);
-  const otherUrl = snapshotCanvas(args.other, args.invert);
+  const mirror = args.direction === 'prev';
+  const currentUrl = snapshotCanvas(args.current, args.invert, mirror);
+  const otherUrl = snapshotCanvas(args.other, args.invert, mirror);
   await Promise.all([preload(currentUrl), preload(otherUrl)]);
   if (!args.scene.isConnected) {
     return {
@@ -53,11 +58,13 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   }
 
   const host = document.createElement('div');
-  host.className = 'pdf-page-curl';
+  host.className = mirror ? 'pdf-page-curl pdf-page-curl--mirror' : 'pdf-page-curl';
   args.scene.appendChild(host);
 
-  const images = args.direction === 'next' ? [currentUrl, otherUrl] : [otherUrl, currentUrl];
-  const successIndex = args.direction === 'next' ? 1 : 0;
+  // Prev is a forward curl of mirrored snapshots, then flipped back with CSS,
+  // so the sheet peels from the left the same way next peels from the right.
+  const images = [currentUrl, otherUrl];
+  const successIndex = 1;
 
   const flip = new PageFlip(host, {
     width: Math.max(1, Math.round(args.width)),
@@ -73,7 +80,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
     disableFlipByClick: false,
     mobileScrollSupport: true,
     swipeDistance: 8,
-    startPage: args.direction === 'next' ? 0 : 1,
+    startPage: 0,
     autoSize: false,
     clickEventForward: false,
   });
@@ -85,9 +92,12 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   let retried = false;
   let wantCommit = false;
   let last: CurlPoint = {
-    x: args.direction === 'next' ? args.width * 0.9 : args.width * 0.1,
+    x: args.width * 0.9,
     y: args.height * 0.72,
   };
+
+  const toLib = (point: CurlPoint): CurlPoint =>
+    mirror ? { x: args.width - point.x, y: point.y } : point;
 
   const localPoint = (clientX: number, clientY: number): CurlPoint => {
     const rect = host.getBoundingClientRect();
@@ -119,9 +129,26 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   };
 
   const playAuto = () => {
-    const corner = cornerFor(last);
-    if (args.direction === 'next') flip.flipNext(corner);
-    else flip.flipPrev(corner);
+    flip.flipNext(cornerFor(last));
+  };
+
+  const pagesReady = () => {
+    const canvas = host.querySelector('canvas');
+    if (!canvas || canvas.width < 2 || canvas.height < 2) return false;
+    const count = flip.getPageCount();
+    if (count < 2) return false;
+    for (let index = 0; index < count; index += 1) {
+      let page: { isLoad?: boolean; image?: HTMLImageElement };
+      try {
+        page = flip.getPage(index);
+      } catch {
+        return false;
+      }
+      const image = page?.image;
+      if (image && image.complete && image.naturalWidth > 0) page.isLoad = true;
+      if (!page?.isLoad) return false;
+    }
+    return true;
   };
 
   flip.on('flip', (event) => {
@@ -130,7 +157,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   });
 
   flip.on('changeState', (event) => {
-    if (!armed || event.data !== 'read') return;
+    if (!armed || !wantCommit || event.data !== 'read') return;
     const index = flip.getCurrentPageIndex();
     if (wantCommit && index === successIndex) {
       finish(true);
@@ -147,41 +174,55 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   });
 
   await new Promise<void>((resolve) => {
-    let ready = false;
+    const started = performance.now();
+    let waiting = false;
     const done = () => {
-      if (ready) return;
-      ready = true;
-      resolve();
+      if (waiting) return;
+      waiting = true;
+      let painted = false;
+      const tick = () => {
+        if (settled) {
+          resolve();
+          return;
+        }
+        const ready = pagesReady() || performance.now() - started > 450;
+        if (!ready) {
+          window.requestAnimationFrame(tick);
+          return;
+        }
+        // The book canvas still shows its blank frame until the next draw. Stay hidden through that paint.
+        if (!painted) {
+          painted = true;
+          window.requestAnimationFrame(() => window.requestAnimationFrame(tick));
+          return;
+        }
+        host.classList.add('pdf-page-curl--ready');
+        resolve();
+      };
+      window.requestAnimationFrame(tick);
     };
     flip.on('init', done);
     flip.loadFromImages(images);
-    armed = true;
     window.setTimeout(done, 80);
   });
+  armed = true;
 
   const prime = (point: CurlPoint) => {
     if (primed || settled) return;
-    const anchor = {
-      x: args.direction === 'next' ? args.width * 0.9 : args.width * 0.1,
-      y: point.y,
-    };
-    const nudge = {
-      x: anchor.x + (args.direction === 'next' ? -12 : 12),
-      y: anchor.y,
-    };
+    const lib = toLib(point);
+    const anchor = { x: args.width * 0.9, y: lib.y };
+    const nudge = { x: anchor.x - 12, y: anchor.y };
     flip.startUserTouch(anchor);
     flip.userMove(nudge, true);
     primed = true;
-    last = point;
-    flip.userMove(point, true);
+    last = lib;
+    flip.userMove(lib, true);
   };
 
   return {
     move(clientX, clientY) {
       if (settled) return;
-      const point = localPoint(clientX, clientY);
-      last = point;
-      prime(point);
+      prime(localPoint(clientX, clientY));
     },
     release(progress, shouldCommit) {
       if (settled) return;
@@ -192,7 +233,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
           return;
         }
         const back = {
-          x: args.direction === 'next' ? args.width * 0.98 : args.width * 0.02,
+          x: args.width * 0.98,
           y: last.y,
         };
         flip.userMove(back, true);

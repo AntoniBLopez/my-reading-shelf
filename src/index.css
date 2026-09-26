@@ -268,14 +268,9 @@
   will-change: transform;
 }
 
-.pdf-viewer-scroll--turning {
-  overflow: visible;
-}
-
 .pdf-turn-scene {
   position: relative;
-  perspective: 1800px;
-  -webkit-perspective: 1800px;
+  overflow: hidden;
   touch-action: pan-y;
 }
 
@@ -327,17 +322,32 @@
   visibility: hidden;
 }
 
-.pdf-page-curl {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  pointer-events: none;
-  overflow: hidden;
+/* StPageFlip sets .stf__parent { position: relative } which would stack extra pages in the scroll. */
+.pdf-page-curl:not(.pdf-page-curl--ready),
+.pdf-page-curl:not(.pdf-page-curl--ready).stf__parent {
+  visibility: hidden;
 }
 
-.pdf-page-curl .stf__parent {
-  width: 100%;
-  height: 100%;
+/* Portrait prev folds the hidden left page. Mirror a forward curl so the sheet peels off the left edge. */
+.pdf-page-curl--mirror canvas {
+  transform: scaleX(-1);
+  transform-origin: center center;
+}
+
+.pdf-page-curl,
+.pdf-page-curl.stf__parent {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 30;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  pointer-events: none;
+  overflow: hidden;
 }
 
 .pdf-turn-scene[data-turn] .pdf-turn-leaf {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { pdfjs } from 'react-pdf';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useTheme } from 'next-themes';
@@ -144,12 +144,37 @@ function PDFViewerComponent({
   const resizeRafRef = useRef<number | null>(null);
   const isTextSelectedRef = useRef(false);
   const stageRef = useRef<PDFPageStageHandle>(null);
-  const [pageTurning, setPageTurning] = useState(false);
 
   scaleRef.current = scale;
   baseScaleRef.current = baseScale;
   const isAtBaseZoom = Math.abs(scale - baseScale) < BASE_ZOOM_TOLERANCE;
   isAtBaseZoomRef.current = isAtBaseZoom;
+
+  // Keep the page in the middle of the viewport when zoom changes. Otherwise the
+  // previous scroll offset leaves the smaller page off the top-left of the screen.
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const center = () => {
+      scroll.scrollLeft = Math.max(0, (scroll.scrollWidth - scroll.clientWidth) / 2);
+      scroll.scrollTop = Math.max(0, (scroll.scrollHeight - scroll.clientHeight) / 2);
+    };
+    center();
+    const content = scroll.firstElementChild;
+    if (!content) return;
+    let updates = 0;
+    const observer = new ResizeObserver(() => {
+      center();
+      updates += 1;
+      if (updates > 12) observer.disconnect();
+    });
+    observer.observe(content);
+    const stop = window.setTimeout(() => observer.disconnect(), 700);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(stop);
+    };
+  }, [scale]);
 
   const clampScale = useCallback(
     (value: number) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, value)),
@@ -852,16 +877,15 @@ function PDFViewerComponent({
           <div
             ref={scrollRef}
             className={cn(
-              'relative flex-1 min-w-0 min-h-0 bg-white dark:bg-black overscroll-contain pdf-viewer-scroll',
-              pageTurning ? 'pdf-viewer-scroll--turning' : 'overflow-auto',
+              'relative flex-1 min-w-0 min-h-0 overflow-auto bg-white dark:bg-black overscroll-contain pdf-viewer-scroll',
               !isAtBaseZoom && 'pdf-viewer-scroll--zoomed'
             )}
           >
             <div
               ref={containerRef}
               className={cn(
-                'relative shrink-0 flex justify-center p-4 bg-white dark:bg-black',
-                isAtBaseZoom ? 'min-h-full min-w-full items-center touch-manipulation' : 'min-h-max min-w-max items-start touch-pan-x touch-pan-y'
+                'relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 bg-white dark:bg-black',
+                isAtBaseZoom ? 'touch-manipulation' : 'touch-pan-x touch-pan-y'
               )}
               onPointerDown={handlePointerDown}
               onDoubleClick={handleDoubleClick}
@@ -910,7 +934,6 @@ function PDFViewerComponent({
                     getCanTurn={getCanTurn}
                     panFree={!isAtBaseZoom}
                     onCommit={goToPage}
-                    onTurnActive={setPageTurning}
                     onDocumentLoadSuccess={onDocumentLoadSuccess}
                     onDocumentLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}
