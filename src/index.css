@@ -289,9 +289,10 @@
   touch-action: none;
 }
 
-/* While text is selected, the browser must own the drag so the selection handles can move. */
-.pdf-turn-scene--selecting {
-  touch-action: manipulation;
+/* While text is selected, ancestors must not keep the touch. Handles need the browser's own drag. */
+.pdf-viewer-selecting,
+.pdf-viewer-selecting .pdf-turn-scene {
+  touch-action: auto !important;
 }
 
 .pdf-turn-scene[data-turn] {

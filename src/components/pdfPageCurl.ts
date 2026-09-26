@@ -267,7 +267,11 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   });
 
   flip.on('changeState', (event) => {
-    if (!armed || !wantCommit || event.data !== 'read') return;
+    if (!armed || event.data !== 'read') return;
+    if (!wantCommit) {
+      finish(false);
+      return;
+    }
     const index = flip.getCurrentPageIndex();
     if (wantCommit && index === successIndex) {
       finish(true);
@@ -312,6 +316,8 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   };
   flip.on('init', reveal);
   flip.loadFromImages(images);
+  const render = (flip as { getRender?: () => { drawBookShadow?: () => void } }).getRender?.();
+  if (render) render.drawBookShadow = () => undefined;
   const folding = flip.getPage(0) as FoldingPage;
   folding.draw = () => paintBlankBack(folding, args.invert);
   adaptCurlCanvas(host, args.invert);
@@ -366,6 +372,9 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
       };
       flip.userMove(back, true);
       flip.userStop(back, false);
+      window.setTimeout(() => {
+        if (!settled) finish(false);
+      }, 700);
       return;
     }
     if (!primed) {

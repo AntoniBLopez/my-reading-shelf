@@ -400,13 +400,8 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     };
     document.addEventListener('selectionchange', syncSelection);
     syncSelection();
-    const onMove = (event: TouchEvent) => {
-      if (gestureRef.current?.active && getCanTurnRef.current()) event.preventDefault();
-    };
-    el.addEventListener('touchmove', onMove, { passive: false });
     return () => {
       document.removeEventListener('selectionchange', syncSelection);
-      el.removeEventListener('touchmove', onMove);
       dropCurl();
     };
   }, [dropCurl]);

@@ -39,6 +39,18 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
+const MOBILE_LAYOUT_QUERY = '(max-width: 1023px)';
+const MOBILE_DEFAULT_SCALE = 1.1;
+const DESKTOP_DEFAULT_SCALE = 0.8;
+const DESKTOP_FULLSCREEN_SCALE = 0.3;
+
+function isMobileLayout() {
+  return typeof window !== 'undefined' && window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
+}
+
+function defaultPageScale() {
+  return isMobileLayout() ? MOBILE_DEFAULT_SCALE : DESKTOP_DEFAULT_SCALE;
+}
 const PDF_LOAD_TIMEOUT_MS = 10000;
 /** Double-tap (Pointer Events): ventana en ms y umbral de movimiento en px para considerar mismo punto */
 const DOUBLE_TAP_DELAY_MS = 450;
@@ -112,7 +124,7 @@ function PDFViewerComponent({
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(book.current_page || 1);
   /** Page zoom from the header, the zoom field, and +/- keys. Two-finger pinch does not change this. */
-  const [scale, setScale] = useState<number>(1.1);
+  const [scale, setScale] = useState<number>(defaultPageScale);
   /** Extra zoom from two fingers. 1 = sitting on the page zoom. See docs/pdf-viewer-zoom.md. */
   const [fingerZoom, setFingerZoom] = useState(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -156,6 +168,8 @@ function PDFViewerComponent({
   const lastRawWidthRef = useRef<number>(600);
   const resizeRafRef = useRef<number | null>(null);
   const isTextSelectedRef = useRef(false);
+  const scaleTouchedRef = useRef(false);
+  const autoFullscreenScaleRef = useRef(false);
   const stageRef = useRef<PDFPageStageHandle>(null);
 
   const isAtBaseZoom = fingerZoom <= 1 + BASE_ZOOM_TOLERANCE;
@@ -256,7 +270,9 @@ function PDFViewerComponent({
       return;
     }
     const onSelectionChange = () => {
-      isTextSelectedRef.current = hasActiveTextSelection(containerRef.current);
+      const selected = hasActiveTextSelection(containerRef.current);
+      isTextSelectedRef.current = selected;
+      containerRef.current?.classList.toggle('pdf-viewer-selecting', selected);
     };
     document.addEventListener('selectionchange', onSelectionChange);
     return () => {
@@ -467,6 +483,8 @@ function PDFViewerComponent({
 
   const setScaleClamped = useCallback(
     (updater: (s: number) => number) => {
+      scaleTouchedRef.current = true;
+      autoFullscreenScaleRef.current = false;
       resetFingerZoom();
       setScale((s) => {
         return clampScale(updater(s));
@@ -479,6 +497,8 @@ function PDFViewerComponent({
     const n = parseInt(zoomInputValue.replace(/%/g, ''), 10);
     if (!isNaN(n)) {
       const newScale = clampScale(n / 100);
+      scaleTouchedRef.current = true;
+      autoFullscreenScaleRef.current = false;
       resetFingerZoom();
       setScale(newScale);
       setZoomInputValue(String(Math.round(newScale * 100)));
@@ -734,17 +754,36 @@ function PDFViewerComponent({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, requestTurn, setScaleClamped]);
 
-  // Non-passive touchmove on scroll area: block browser zoom during pinch without re-rendering PDF each frame
+  // Non-passive touchmove only during a pinch or a zoomed pan. A permanent listener
+  // blocks iOS from dragging a text selection.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const onMove = (e: TouchEvent) => {
+      if (isTextSelectedRef.current) return;
       const pinching = e.touches.length === 2 && !!touchStartRef.current?.distance;
       const panning = e.touches.length === 1 && fingerZoomRef.current > 1 + BASE_ZOOM_TOLERANCE;
-      if (pinching || panning) e.preventDefault();
+      if ((pinching || panning) && e.cancelable) e.preventDefault();
     };
-    el.addEventListener('touchmove', onMove, { passive: false });
-    return () => el.removeEventListener('touchmove', onMove);
+    const arm = (e: TouchEvent) => {
+      if (isTextSelectedRef.current) return;
+      const pinch = e.touches.length >= 2;
+      const pan = e.touches.length === 1 && fingerZoomRef.current > 1 + BASE_ZOOM_TOLERANCE;
+      if (!pinch && !pan) return;
+      el.addEventListener('touchmove', onMove, { passive: false });
+    };
+    const disarm = (e: TouchEvent) => {
+      if (e.touches.length === 0) el.removeEventListener('touchmove', onMove);
+    };
+    el.addEventListener('touchstart', arm);
+    el.addEventListener('touchend', disarm);
+    el.addEventListener('touchcancel', disarm);
+    return () => {
+      el.removeEventListener('touchstart', arm);
+      el.removeEventListener('touchend', disarm);
+      el.removeEventListener('touchcancel', disarm);
+      el.removeEventListener('touchmove', onMove);
+    };
   }, [isOpen, pdfUrl]);
 
   // Limpieza del timeout de double-tap al cerrar
@@ -806,6 +845,21 @@ function PDFViewerComponent({
       setIsFullscreen(true);
     }
   }, [isFullscreen]);
+
+  useEffect(() => {
+    if (isMobileLayout()) return;
+    if (isFullscreen && !scaleTouchedRef.current) {
+      autoFullscreenScaleRef.current = true;
+      resetFingerZoom();
+      setScale(DESKTOP_FULLSCREEN_SCALE);
+      return;
+    }
+    if (!isFullscreen && autoFullscreenScaleRef.current && !scaleTouchedRef.current) {
+      autoFullscreenScaleRef.current = false;
+      resetFingerZoom();
+      setScale(DESKTOP_DEFAULT_SCALE);
+    }
+  }, [isFullscreen, resetFingerZoom]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
