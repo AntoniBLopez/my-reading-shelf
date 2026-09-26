@@ -168,7 +168,6 @@ function PDFViewerComponent({
   const lastRawWidthRef = useRef<number>(600);
   const resizeRafRef = useRef<number | null>(null);
   const isTextSelectedRef = useRef(false);
-  const savedScrollRef = useRef({ top: 0, left: 0 });
   const [textSelected, setTextSelected] = useState(false);
   const scaleTouchedRef = useRef(false);
   const autoFullscreenScaleRef = useRef(false);
@@ -176,13 +175,6 @@ function PDFViewerComponent({
 
   const isAtBaseZoom = fingerZoom <= 1 + BASE_ZOOM_TOLERANCE;
   isAtBaseZoomRef.current = isAtBaseZoom;
-
-  useLayoutEffect(() => {
-    const scroll = scrollRef.current;
-    if (!scroll || (!textSelected && !savedScrollRef.current.top && !savedScrollRef.current.left)) return;
-    scroll.scrollTop = savedScrollRef.current.top;
-    scroll.scrollLeft = savedScrollRef.current.left;
-  }, [textSelected]);
 
   // Recenter only when the page zoom changes (header, field, +/-). Finger pinch
   // keeps its own pan and must not be pulled back to the middle.
@@ -279,32 +271,26 @@ function PDFViewerComponent({
       setTextSelected(false);
       return;
     }
-    let frame = 0;
     const onSelectionChange = () => {
       const selected = hasActiveTextSelection(containerRef.current);
-      const scroll = scrollRef.current;
-      if (selected && scroll && !isTextSelectedRef.current) {
-        savedScrollRef.current = { top: scroll.scrollTop, left: scroll.scrollLeft };
-      }
       isTextSelectedRef.current = selected;
       containerRef.current?.classList.toggle('pdf-viewer-selecting', selected);
-      if (!selected) {
-        cancelAnimationFrame(frame);
-        scroll?.classList.remove('pdf-viewer-text-selected');
-        setTextSelected(false);
-        return;
-      }
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        if (!isTextSelectedRef.current) return;
-        scrollRef.current?.classList.add('pdf-viewer-text-selected');
-        setTextSelected(true);
-      });
+      setTextSelected(selected);
+    };
+    // The Dialog's scroll lock (react-remove-scroll) listens to touchmove on document and
+    // calls preventDefault for one-finger moves it thinks cannot scroll. That cancels the
+    // native drag of a selection handle, so only two-finger drags could grow the selection.
+    // Stop the event before it reaches that listener while the reader has text selected.
+    const guardSelectionDrag = (e: TouchEvent) => {
+      if (!isTextSelectedRef.current || e.touches.length !== 1) return;
+      if (!containerRef.current?.contains(e.target as Node | null)) return;
+      e.stopPropagation();
     };
     document.addEventListener('selectionchange', onSelectionChange);
+    document.addEventListener('touchmove', guardSelectionDrag, { capture: true, passive: true });
     return () => {
-      cancelAnimationFrame(frame);
       document.removeEventListener('selectionchange', onSelectionChange);
+      document.removeEventListener('touchmove', guardSelectionDrag, { capture: true });
       isTextSelectedRef.current = false;
       setTextSelected(false);
     };
@@ -1065,8 +1051,7 @@ function PDFViewerComponent({
             ref={scrollRef}
             className={cn(
               'relative flex-1 min-w-0 min-h-0 overflow-auto bg-white dark:bg-black overscroll-contain pdf-viewer-scroll',
-              !isAtBaseZoom && 'pdf-viewer-scroll--zoomed',
-              textSelected && 'pdf-viewer-text-selected'
+              !isAtBaseZoom && 'pdf-viewer-scroll--zoomed'
             )}
           >
             <div
