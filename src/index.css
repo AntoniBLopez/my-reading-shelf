@@ -266,7 +266,7 @@
 }
 
 .pdf-viewer-scroll--zoomed {
-  touch-action: pan-x pan-y;
+  touch-action: none;
 }
 
 .pdf-viewer-pinch-content {
@@ -280,7 +280,7 @@
 }
 
 .pdf-turn-scene--free {
-  touch-action: pan-x pan-y;
+  touch-action: none;
 }
 
 .pdf-turn-scene[data-turn] {

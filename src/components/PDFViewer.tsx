@@ -50,8 +50,12 @@ const DOUBLE_TAP_RIGHT_ZONE = 0.6;
 const PAGE_WIDTH_SNAP_PX = 64;
 /** Ignore ResizeObserver updates smaller than this (e.g. scrollbar on theme change) so PDFContentBlock doesn't re-render and Document doesn't reset */
 const PAGE_WIDTH_MIN_DELTA_PX = 48;
-/** Tolerance to treat pinch zoom as "back at toolbar default" */
+/** Tolerance to treat the two-finger zoom as back at the page zoom. */
 const BASE_ZOOM_TOLERANCE = 0.01;
+/** Two-finger magnification on top of the page zoom. 1 means no extra zoom. */
+const PINCH_MIN = 1;
+const PINCH_MAX = 4;
+const PINCH_SNAP = 0.06;
 
 function hasActiveTextSelection(container?: HTMLElement | null): boolean {
   const sel = window.getSelection();
@@ -107,9 +111,10 @@ function PDFViewerComponent({
 }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(book.current_page || 1);
+  /** Page zoom from the header, the zoom field, and +/- keys. Two-finger pinch does not change this. */
   const [scale, setScale] = useState<number>(1.1);
-  /** Zoom chosen via toolbar; page swipe only works when pinch zoom matches this value */
-  const [baseScale, setBaseScale] = useState<number>(1.1);
+  /** Extra zoom from two fingers. 1 = sitting on the page zoom. See docs/pdf-viewer-zoom.md. */
+  const [fingerZoom, setFingerZoom] = useState(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,16 +130,24 @@ function PDFViewerComponent({
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinchContentRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
-  const touchStartRef = useRef<{ x: number; y: number; scale: number; distance: number; touchedAt?: number } | null>(null);
+  const touchStartRef = useRef<{
+    x: number;
+    y: number;
+    distance: number;
+    zoom: number;
+    panX: number;
+    panY: number;
+    focalX: number;
+    focalY: number;
+    touchedAt?: number;
+  } | null>(null);
   /** Double-tap (solo touch vía Pointer Events): último toque para detectar segundo tap */
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const doubleTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullscreenHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scaleRef = useRef<number>(1.1);
-  const baseScaleRef = useRef<number>(1.1);
   const isAtBaseZoomRef = useRef(true);
-  const pinchStartScaleRef = useRef(1.1);
-  const pinchCurrentRatioRef = useRef(1);
+  const fingerZoomRef = useRef(1);
+  const fingerPanRef = useRef({ x: 0, y: 0 });
   const isPinchingRef = useRef(false);
   const [zoomInputValue, setZoomInputValue] = useState('');
   const zoomInputRef = useRef<HTMLInputElement>(null);
@@ -145,13 +158,11 @@ function PDFViewerComponent({
   const isTextSelectedRef = useRef(false);
   const stageRef = useRef<PDFPageStageHandle>(null);
 
-  scaleRef.current = scale;
-  baseScaleRef.current = baseScale;
-  const isAtBaseZoom = Math.abs(scale - baseScale) < BASE_ZOOM_TOLERANCE;
+  const isAtBaseZoom = fingerZoom <= 1 + BASE_ZOOM_TOLERANCE;
   isAtBaseZoomRef.current = isAtBaseZoom;
 
-  // Keep the page in the middle of the viewport when zoom changes. Otherwise the
-  // previous scroll offset leaves the smaller page off the top-left of the screen.
+  // Recenter only when the page zoom changes (header, field, +/-). Finger pinch
+  // keeps its own pan and must not be pulled back to the middle.
   useLayoutEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll) return;
@@ -181,25 +192,62 @@ function PDFViewerComponent({
     []
   );
 
-  const applyPinchVisual = useCallback((ratio: number) => {
-    pinchCurrentRatioRef.current = ratio;
+  const applyFingerView = useCallback(() => {
     const el = pinchContentRef.current;
     if (!el) return;
-    if (Math.abs(ratio - 1) < 0.001) {
+    const zoom = fingerZoomRef.current;
+    const pan = fingerPanRef.current;
+    if (zoom <= 1 + 0.001 && Math.abs(pan.x) < 0.5 && Math.abs(pan.y) < 0.5) {
       el.style.transform = '';
       el.style.transformOrigin = '';
-    } else {
-      el.style.transform = `scale(${ratio})`;
-      el.style.transformOrigin = 'center center';
+      return;
     }
+    el.style.transformOrigin = '0 0';
+    el.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
   }, []);
 
-  const commitPinchScale = useCallback(() => {
-    const ratio = pinchCurrentRatioRef.current;
-    applyPinchVisual(1);
-    if (Math.abs(ratio - 1) < 0.001) return;
-    setScale(clampScale(pinchStartScaleRef.current * ratio));
-  }, [applyPinchVisual, clampScale]);
+  const layoutOrigin = useCallback(() => {
+    const node = pinchContentRef.current;
+    if (!node) return { left: 0, top: 0 };
+    const rect = node.getBoundingClientRect();
+    return {
+      left: rect.left - fingerPanRef.current.x,
+      top: rect.top - fingerPanRef.current.y,
+    };
+  }, []);
+
+  const clampFingerPan = useCallback((pan: { x: number; y: number }, zoom: number) => {
+    const node = pinchContentRef.current;
+    const parent = containerRef.current;
+    if (!node || !parent) return pan;
+    const origin = layoutOrigin();
+    const parentRect = parent.getBoundingClientRect();
+    const width = node.offsetWidth * zoom;
+    const height = node.offsetHeight * zoom;
+    const margin = 64;
+    const minX = parentRect.left + margin - origin.left - width;
+    const maxX = parentRect.right - margin - origin.left;
+    const minY = parentRect.top + margin - origin.top - height;
+    const maxY = parentRect.bottom - margin - origin.top;
+    return {
+      x: Math.min(maxX, Math.max(minX, pan.x)),
+      y: Math.min(maxY, Math.max(minY, pan.y)),
+    };
+  }, [layoutOrigin]);
+
+  const publishFingerZoom = useCallback((zoom: number) => {
+    fingerZoomRef.current = zoom;
+    isAtBaseZoomRef.current = zoom <= 1 + BASE_ZOOM_TOLERANCE;
+    setFingerZoom((current) => (Math.abs(current - zoom) < 0.001 ? current : zoom));
+  }, []);
+
+  const resetFingerZoom = useCallback(() => {
+    fingerZoomRef.current = 1;
+    fingerPanRef.current = { x: 0, y: 0 };
+    isAtBaseZoomRef.current = true;
+    applyFingerView();
+    setFingerZoom(1);
+  }, [applyFingerView]);
 
   // Track text selection in the PDF so swipe/double-tap navigation is disabled while selecting
   useEffect(() => {
@@ -419,27 +467,26 @@ function PDFViewerComponent({
 
   const setScaleClamped = useCallback(
     (updater: (s: number) => number) => {
+      resetFingerZoom();
       setScale((s) => {
-        const next = clampScale(updater(s));
-        setBaseScale(next);
-        return next;
+        return clampScale(updater(s));
       });
     },
-    [clampScale]
+    [clampScale, resetFingerZoom]
   );
 
   const applyZoomFromInput = useCallback(() => {
     const n = parseInt(zoomInputValue.replace(/%/g, ''), 10);
     if (!isNaN(n)) {
       const newScale = clampScale(n / 100);
+      resetFingerZoom();
       setScale(newScale);
-      setBaseScale(newScale);
       setZoomInputValue(String(Math.round(newScale * 100)));
     } else {
       setZoomInputValue(String(Math.round(scale * 100)));
     }
     zoomInputRef.current?.blur();
-  }, [zoomInputValue, scale, clampScale]);
+  }, [zoomInputValue, scale, clampScale, resetFingerZoom]);
 
   const syncZoomInputFromScale = useCallback(() => {
     if (isPinchingRef.current) return;
@@ -462,38 +509,99 @@ function PDFViewerComponent({
       // Don't preventDefault on touchstart — Safari iOS can crash/reload the page
       stageRef.current?.cancel();
       isPinchingRef.current = true;
-      pinchStartScaleRef.current = scaleRef.current;
-      pinchCurrentRatioRef.current = 1;
       const dist = getTouchDistance(e.touches);
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const origin = layoutOrigin();
+      const zoom = Math.max(PINCH_MIN, fingerZoomRef.current);
+      const pan = fingerPanRef.current;
       touchStartRef.current = {
-        x: 0,
-        y: 0,
-        scale: scaleRef.current,
+        x: midX,
+        y: midY,
         distance: dist > 0 ? dist : 1,
+        zoom,
+        panX: pan.x,
+        panY: pan.y,
+        focalX: (midX - origin.left - pan.x) / zoom,
+        focalY: (midY - origin.top - pan.y) / zoom,
       };
     } else if (e.touches.length === 1) {
       isPinchingRef.current = false;
+      const pan = fingerPanRef.current;
       touchStartRef.current = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY,
-        scale: scaleRef.current,
         distance: 0,
+        zoom: fingerZoomRef.current,
+        panX: pan.x,
+        panY: pan.y,
+        focalX: 0,
+        focalY: 0,
         touchedAt: Date.now(),
       };
     }
-  }, []);
+  }, [layoutOrigin]);
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
-      if (e.touches.length === 2 && touchStartRef.current && touchStartRef.current.distance > 0) {
+      const start = touchStartRef.current;
+      if (!start) return;
+      if (e.touches.length === 2 && start.distance > 0) {
         e.preventDefault();
         const newDist = getTouchDistance(e.touches);
         if (newDist < 1) return;
-        const ratio = newDist / touchStartRef.current.distance;
-        applyPinchVisual(ratio);
+        let zoom = start.zoom * (newDist / start.distance);
+        zoom = Math.max(PINCH_MIN, Math.min(PINCH_MAX, zoom));
+        if (zoom <= PINCH_MIN + PINCH_SNAP) {
+          fingerZoomRef.current = 1;
+          fingerPanRef.current = { x: 0, y: 0 };
+          isAtBaseZoomRef.current = true;
+          applyFingerView();
+          const origin = layoutOrigin();
+          const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          touchStartRef.current = {
+            x: midX,
+            y: midY,
+            distance: newDist,
+            zoom: 1,
+            panX: 0,
+            panY: 0,
+            focalX: midX - origin.left,
+            focalY: midY - origin.top,
+          };
+          return;
+        }
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const origin = layoutOrigin();
+        const pan = clampFingerPan(
+          {
+            x: midX - origin.left - start.focalX * zoom,
+            y: midY - origin.top - start.focalY * zoom,
+          },
+          zoom
+        );
+        fingerZoomRef.current = zoom;
+        fingerPanRef.current = pan;
+        isAtBaseZoomRef.current = false;
+        applyFingerView();
+        return;
+      }
+      if (e.touches.length === 1 && start.distance === 0 && fingerZoomRef.current > 1 + BASE_ZOOM_TOLERANCE) {
+        e.preventDefault();
+        const pan = clampFingerPan(
+          {
+            x: start.panX + (e.touches[0].clientX - start.x),
+            y: start.panY + (e.touches[0].clientY - start.y),
+          },
+          fingerZoomRef.current
+        );
+        fingerPanRef.current = pan;
+        applyFingerView();
       }
     },
-    [applyPinchVisual]
+    [applyFingerView, clampFingerPan, layoutOrigin]
   );
 
   const handleTouchEnd = useCallback(
@@ -504,31 +612,25 @@ function PDFViewerComponent({
         touchStartRef.current = null;
         isPinchingRef.current = false;
 
-        if (wasPinch) {
-          commitPinchScale();
-        }
+        if (wasPinch) publishFingerZoom(fingerZoomRef.current);
       } else if (e.touches.length === 1 && touchStartRef.current?.distance > 0) {
-        // Lifted one finger after pinch: commit zoom, then treat remaining finger as pan
-        commitPinchScale();
+        publishFingerZoom(fingerZoomRef.current);
         isPinchingRef.current = false;
+        const pan = fingerPanRef.current;
         touchStartRef.current = {
           x: e.touches[0].clientX,
           y: e.touches[0].clientY,
-          scale: scaleRef.current,
           distance: 0,
+          zoom: fingerZoomRef.current,
+          panX: pan.x,
+          panY: pan.y,
+          focalX: 0,
+          focalY: 0,
           touchedAt: Date.now(),
-        };
-      } else if (e.touches.length === 2) {
-        const dist = getTouchDistance(e.touches);
-        touchStartRef.current = {
-          x: 0,
-          y: 0,
-          scale: scaleRef.current,
-          distance: dist > 0 ? dist : 1,
         };
       }
     },
-    [commitPinchScale]
+    [publishFingerZoom]
   );
 
   /** Toggle barra en fullscreen (usado por doble toque en touch y doble clic en desktop) */
@@ -637,9 +739,9 @@ function PDFViewerComponent({
     const el = scrollRef.current;
     if (!el) return;
     const onMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && touchStartRef.current?.distance) {
-        e.preventDefault();
-      }
+      const pinching = e.touches.length === 2 && !!touchStartRef.current?.distance;
+      const panning = e.touches.length === 1 && fingerZoomRef.current > 1 + BASE_ZOOM_TOLERANCE;
+      if (pinching || panning) e.preventDefault();
     };
     el.addEventListener('touchmove', onMove, { passive: false });
     return () => el.removeEventListener('touchmove', onMove);
@@ -885,7 +987,7 @@ function PDFViewerComponent({
               ref={containerRef}
               className={cn(
                 'relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 bg-white dark:bg-black',
-                isAtBaseZoom ? 'touch-manipulation' : 'touch-pan-x touch-pan-y'
+                isAtBaseZoom ? 'touch-manipulation' : 'touch-none'
               )}
               onPointerDown={handlePointerDown}
               onDoubleClick={handleDoubleClick}

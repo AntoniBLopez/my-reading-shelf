@@ -18,21 +18,43 @@ type CreatePageCurlArgs = {
   other: HTMLCanvasElement;
   invert: boolean;
   onResult: (committed: boolean) => void;
+  /** Fires once the curl sheet is actually on screen. */
+  onVisible?: () => void;
 };
 
-function snapshotCanvas(source: HTMLCanvasElement, invert: boolean, mirror: boolean): string {
+function invertPixels(context: CanvasRenderingContext2D, width: number, height: number) {
+  const image = context.getImageData(0, 0, width, height);
+  const data = image.data;
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255 - data[index];
+    data[index + 1] = 255 - data[index + 1];
+    data[index + 2] = 255 - data[index + 2];
+  }
+  context.putImageData(image, 0, 0);
+}
+
+function snapshotCanvas(
+  source: HTMLCanvasElement,
+  invert: boolean,
+  mirror: boolean,
+  maxWidth: number
+): string {
+  const scale = Math.min(1, maxWidth / Math.max(1, source.width));
+  const width = Math.max(1, Math.round(source.width * scale));
+  const height = Math.max(1, Math.round(source.height * scale));
   const copy = document.createElement('canvas');
-  copy.width = source.width;
-  copy.height = source.height;
-  const context = copy.getContext('2d');
-  if (!context) return source.toDataURL('image/jpeg', 0.86);
-  if (invert) context.filter = 'invert(1)';
+  copy.width = width;
+  copy.height = height;
+  const context = copy.getContext('2d', { willReadFrequently: invert });
+  if (!context) return source.toDataURL('image/jpeg', 0.82);
   if (mirror) {
-    context.translate(copy.width, 0);
+    context.translate(width, 0);
     context.scale(-1, 1);
   }
-  context.drawImage(source, 0, 0);
-  return copy.toDataURL('image/jpeg', 0.86);
+  context.drawImage(source, 0, 0, width, height);
+  // Pixel invert, not ctx.filter: mobile browsers often ignore the filter and the sheet stays light.
+  if (invert) invertPixels(context, width, height);
+  return copy.toDataURL('image/jpeg', 0.82);
 }
 
 function isOpaqueWhite(style: CanvasRenderingContext2D['fillStyle']): boolean {
@@ -93,20 +115,11 @@ function adaptCurlCanvas(host: HTMLElement, dark: boolean) {
   };
 }
 
-function preload(src: string): Promise<void> {
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () => resolve();
-    image.onerror = () => resolve();
-    image.src = src;
-  });
-}
-
 export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurlSession> {
   const mirror = args.direction === 'prev';
-  const currentUrl = snapshotCanvas(args.current, args.invert, mirror);
-  const otherUrl = snapshotCanvas(args.other, args.invert, mirror);
-  await Promise.all([preload(currentUrl), preload(otherUrl)]);
+  const maxWidth = Math.min(1400, Math.max(1, args.width) * 2);
+  const currentUrl = snapshotCanvas(args.current, args.invert, mirror, maxWidth);
+  const otherUrl = snapshotCanvas(args.other, args.invert, mirror, maxWidth);
   if (!args.scene.isConnected) {
     return {
       move: () => undefined,
@@ -231,59 +244,75 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
     finish(false);
   });
 
-  await new Promise<void>((resolve) => {
-    const started = performance.now();
-    let waiting = false;
-    const done = () => {
-      if (waiting) return;
-      waiting = true;
-      let painted = false;
-      const tick = () => {
-        if (settled) {
-          resolve();
-          return;
-        }
-        const ready = pagesReady() || performance.now() - started > 450;
-        if (!ready) {
+  const started = performance.now();
+  let revealing = false;
+  const reveal = () => {
+    if (revealing || settled) return;
+    revealing = true;
+    let painted = false;
+    const tick = () => {
+      if (settled) return;
+      if (pagesReady()) {
+        if (!painted) {
+          painted = true;
           window.requestAnimationFrame(tick);
           return;
         }
-        // The book canvas still shows its blank frame until the next draw. Stay hidden through that paint.
-        if (!painted) {
-          painted = true;
-          window.requestAnimationFrame(() => window.requestAnimationFrame(tick));
-          return;
-        }
         host.classList.add('pdf-page-curl--ready');
-        resolve();
-      };
+        args.onVisible?.();
+        return;
+      }
+      if (performance.now() - started > 450) return;
       window.requestAnimationFrame(tick);
     };
-    flip.on('init', done);
-    flip.loadFromImages(images);
-    adaptCurlCanvas(host, args.invert);
-    window.setTimeout(done, 80);
-  });
+    window.requestAnimationFrame(tick);
+  };
+  flip.on('init', reveal);
+  flip.loadFromImages(images);
+  adaptCurlCanvas(host, args.invert);
+  host.querySelector('canvas')?.style.setProperty('filter', 'none', 'important');
+  window.setTimeout(reveal, 80);
   armed = true;
 
-  const prime = (point: CurlPoint) => {
-    if (primed || settled) return;
+  const track = (point: CurlPoint) => {
     const lib = toLib(point);
-    const anchor = { x: args.width * 0.9, y: lib.y };
-    const nudge = { x: anchor.x - 12, y: anchor.y };
-    flip.startUserTouch(anchor);
-    flip.userMove(nudge, true);
-    primed = true;
     last = lib;
+    if (!primed) {
+      const anchor = { x: args.width * 0.9, y: lib.y };
+      const nudge = { x: anchor.x - 12, y: anchor.y };
+      flip.startUserTouch(anchor);
+      flip.userMove(nudge, true);
+      primed = true;
+    }
     flip.userMove(lib, true);
+  };
+
+  const glideToCommit = () => {
+    const from = last.x;
+    const to = -1;
+    let step = 0;
+    const steps = 6;
+    const frame = () => {
+      if (settled) return;
+      step += 1;
+      const point = { x: from + ((to - from) * step) / steps, y: last.y };
+      flip.userMove(point, true);
+      last = point;
+      if (step < steps) {
+        window.requestAnimationFrame(frame);
+        return;
+      }
+      flip.userStop(point, false);
+    };
+    window.requestAnimationFrame(frame);
   };
 
   return {
     move(clientX, clientY) {
-      if (settled) return;
-      prime(localPoint(clientX, clientY));
+      if (settled || !armed) return;
+      track(localPoint(clientX, clientY));
     },
-    release(progress, shouldCommit) {
+    release(_progress, shouldCommit) {
       if (settled) return;
       wantCommit = shouldCommit;
       if (!shouldCommit) {
@@ -299,11 +328,12 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
         flip.userStop(back, false);
         return;
       }
-      if (!primed || progress < 0.5) {
+      if (!primed) {
         playAuto();
         return;
       }
-      flip.userStop(last, false);
+      if (last.x <= 0) flip.userStop(last, false);
+      else glideToCommit();
     },
     destroy() {
       settled = true;

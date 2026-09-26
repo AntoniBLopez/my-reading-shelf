@@ -65,7 +65,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const nextUnderRef = useRef<HTMLDivElement>(null);
   const curlRef = useRef<PageCurlSession | null>(null);
   const curlGenRef = useRef(0);
-  const pendingReleaseRef = useRef<{ progress: number; commit: boolean } | null>(null);
+  const pendingReleaseRef = useRef<{ progress: number; commit: boolean; x: number; y: number } | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const progressRef = useRef(0);
   const lockRef = useRef(false);
@@ -205,6 +205,10 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         current,
         other,
         invert: document.documentElement.classList.contains('dark'),
+        onVisible: () => {
+          if (gen !== curlGenRef.current) return;
+          coverLeaf(true);
+        },
         onResult: (committed) => {
           if (gen !== curlGenRef.current) return;
           curlRef.current = null;
@@ -225,12 +229,13 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
           return;
         }
         curlRef.current = session;
-        coverLeaf(true);
         const pending = pendingReleaseRef.current;
         pendingReleaseRef.current = null;
         const gesture = gestureRef.current;
-        if (pending) session.release(pending.progress, pending.commit);
-        else if (auto || !gesture?.active) session.release(1, true);
+        if (pending) {
+          session.move(pending.x, pending.y);
+          session.release(pending.progress, pending.commit);
+        } else if (auto || !gesture?.active) session.release(1, true);
         else session.move(gesture.lastX, gesture.lastY);
       }).catch(() => {
         if (gen !== curlGenRef.current) return;
@@ -336,7 +341,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         onTurnActiveRef.current?.(false);
         return;
       }
-      pendingReleaseRef.current = { progress, commit: true };
+      pendingReleaseRef.current = { progress, commit: true, x: gesture.lastX, y: gesture.lastY };
     },
     [dropCurl]
   );
@@ -389,6 +394,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         gesture.active = true;
         gesture.dir = dx < 0 ? 'next' : 'prev';
         onTurnActiveRef.current?.(true);
+        event.currentTarget.style.touchAction = 'none';
         event.currentTarget.setPointerCapture(event.pointerId);
       }
 
@@ -424,6 +430,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const handlePointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!gestureRef.current || event.pointerId !== gestureRef.current.pointerId) return;
+      event.currentTarget.style.touchAction = '';
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
