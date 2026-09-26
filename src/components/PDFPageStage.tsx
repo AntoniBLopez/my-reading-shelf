@@ -172,6 +172,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       }
       commitOnceRef.current = true;
       lockRef.current = true;
+      coverLeaf(true);
       setSlots((current) => ({ ...current, leaf: target }));
       onCommitRef.current(target);
       holdCurlUntilPage(target);
@@ -240,8 +241,8 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         invert: document.documentElement.classList.contains('dark'),
         onVisible: () => {
           if (gen !== curlGenRef.current) return;
-          coverLeaf(true);
           if (!alreadyCommitted) return;
+          coverLeaf(true);
           setSlots({
             leaf: target,
             next: target + 1,

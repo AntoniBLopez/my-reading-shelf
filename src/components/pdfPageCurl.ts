@@ -33,20 +33,16 @@ function invertPixels(context: CanvasRenderingContext2D, width: number, height: 
   context.putImageData(image, 0, 0);
 }
 
-function snapshotCanvas(
-  source: HTMLCanvasElement,
-  invert: boolean,
-  mirror: boolean,
-  maxWidth: number
-): string {
-  const scale = Math.min(1, maxWidth / Math.max(1, source.width));
-  const width = Math.max(1, Math.round(source.width * scale));
-  const height = Math.max(1, Math.round(source.height * scale));
+function snapshotCanvas(source: HTMLCanvasElement, invert: boolean, mirror: boolean): string {
+  const width = Math.max(1, source.width);
+  const height = Math.max(1, source.height);
   const copy = document.createElement('canvas');
   copy.width = width;
   copy.height = height;
   const context = copy.getContext('2d', { willReadFrequently: invert });
-  if (!context) return source.toDataURL('image/jpeg', 0.82);
+  if (!context) return source.toDataURL('image/png');
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
   if (mirror) {
     context.translate(width, 0);
     context.scale(-1, 1);
@@ -54,7 +50,7 @@ function snapshotCanvas(
   context.drawImage(source, 0, 0, width, height);
   // Pixel invert, not ctx.filter: mobile browsers often ignore the filter and the sheet stays light.
   if (invert) invertPixels(context, width, height);
-  return copy.toDataURL('image/jpeg', 0.82);
+  return copy.toDataURL('image/png');
 }
 
 type FoldingPage = {
@@ -120,6 +116,70 @@ function softenDarkShadow(color: string): string {
   return `rgba(255, 255, 255, ${Math.min(0.14, alpha * 0.28).toFixed(3)})`;
 }
 
+type CurlFlipUi = {
+  resizeCanvas?: () => void;
+  getCanvas?: () => HTMLCanvasElement;
+};
+
+type CurlFlipRender = {
+  canvas?: HTMLCanvasElement;
+  drawFrame?: () => void;
+  clear?: () => void;
+  getContext?: () => CanvasRenderingContext2D;
+};
+
+/** page-flip renders its canvas at CSS pixels; scale it up for crisp text on retina displays. */
+function enableRetinaCurlCanvas(
+  host: HTMLElement,
+  flip: PageFlip,
+  cssWidth: number,
+  cssHeight: number,
+  dark: boolean
+) {
+  const ui = (flip as { getUI?: () => CurlFlipUi }).getUI?.();
+  const render = (flip as { getRender?: () => CurlFlipRender }).getRender?.();
+  const canvas = ui?.getCanvas?.() ?? host.querySelector('canvas');
+  const context = render?.getContext?.();
+  if (!canvas || !context || !render?.drawFrame || !render.clear) return;
+
+  const cssW = Math.max(1, Math.round(cssWidth));
+  const cssH = Math.max(1, Math.round(cssHeight));
+  const dpr = window.devicePixelRatio || 1;
+
+  const syncCanvas = () => {
+    const physicalW = Math.max(1, Math.round(cssW * dpr));
+    const physicalH = Math.max(1, Math.round(cssH * dpr));
+    if (canvas.width !== physicalW || canvas.height !== physicalH) {
+      canvas.width = physicalW;
+      canvas.height = physicalH;
+    }
+    canvas.style.width = `${cssW}px`;
+    canvas.style.height = `${cssH}px`;
+  };
+
+  if (ui) ui.resizeCanvas = syncCanvas;
+  syncCanvas();
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+
+  render.clear = () => {
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.fillStyle = dark ? '#000000' : '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.restore();
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+
+  const originalDrawFrame = render.drawFrame.bind(render);
+  render.drawFrame = () => {
+    syncCanvas();
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    originalDrawFrame();
+  };
+}
+
 function adaptCurlCanvas(host: HTMLElement, dark: boolean) {
   const canvas = host.querySelector('canvas');
   const context = canvas?.getContext('2d');
@@ -153,9 +213,8 @@ function adaptCurlCanvas(host: HTMLElement, dark: boolean) {
 
 export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurlSession> {
   const mirror = args.direction === 'prev';
-  const maxWidth = Math.min(1400, Math.max(1, args.width) * 2);
-  const currentUrl = snapshotCanvas(args.current, args.invert, mirror, maxWidth);
-  const otherUrl = snapshotCanvas(args.other, args.invert, mirror, maxWidth);
+  const currentUrl = snapshotCanvas(args.current, args.invert, mirror);
+  const otherUrl = snapshotCanvas(args.other, args.invert, mirror);
   if (!args.scene.isConnected) {
     return {
       move: () => undefined,
@@ -200,6 +259,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   let retried = false;
   let wantCommit = false;
   let queuedRelease: { progress: number; commit: boolean } | null = null;
+  let queuedMove: CurlPoint | null = null;
   let last: CurlPoint = {
     x: args.width * 0.9,
     y: args.height * 0.72,
@@ -287,26 +347,35 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
     finish(false);
   });
 
+  const showCurl = () => {
+    if (shown || settled) return;
+    host.classList.add('pdf-page-curl--ready');
+    shown = true;
+    args.onVisible?.();
+    const pendingMove = queuedMove;
+    queuedMove = null;
+    if (pendingMove) track(pendingMove);
+    const queued = queuedRelease;
+    queuedRelease = null;
+    if (queued) releaseNow(queued.progress, queued.commit);
+  };
+
   const started = performance.now();
   let revealing = false;
   const reveal = () => {
     if (revealing || settled) return;
     revealing = true;
-    let painted = false;
+    let paintFrames = 0;
     const tick = () => {
       if (settled) return;
       if (pagesReady()) {
-        if (!painted) {
-          painted = true;
+        paintFrames += 1;
+        // Retina resize clears the canvas once; wait for a stable painted frame before swapping layers.
+        if (paintFrames < 3) {
           window.requestAnimationFrame(tick);
           return;
         }
-        host.classList.add('pdf-page-curl--ready');
-        shown = true;
-        args.onVisible?.();
-        const queued = queuedRelease;
-        queuedRelease = null;
-        if (queued) releaseNow(queued.progress, queued.commit);
+        showCurl();
         return;
       }
       if (performance.now() - started > 450) return;
@@ -318,6 +387,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   flip.loadFromImages(images);
   const render = (flip as { getRender?: () => { drawBookShadow?: () => void } }).getRender?.();
   if (render) render.drawBookShadow = () => undefined;
+  enableRetinaCurlCanvas(host, flip, args.width, args.height, args.invert);
   const folding = flip.getPage(0) as FoldingPage;
   folding.draw = () => paintBlankBack(folding, args.invert);
   adaptCurlCanvas(host, args.invert);
@@ -388,7 +458,12 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   return {
     move(clientX, clientY) {
       if (settled || !armed) return;
-      track(localPoint(clientX, clientY));
+      const point = localPoint(clientX, clientY);
+      if (!shown) {
+        queuedMove = point;
+        return;
+      }
+      track(point);
     },
     release(progress, shouldCommit) {
       if (settled) return;
