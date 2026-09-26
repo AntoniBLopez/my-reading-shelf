@@ -16,5 +16,5 @@ Do not swap these. Blanking the revealed page, or blanking the front face, is wr
 - Releasing before the page actually turns must fall back to the same page. That cancel must not lock the reader. The next drag has to fold and turn again.
 - When a turn completes, keep the fold up until the destination page is painted, then remove it. Removing it earlier flashes the page.
 - Header arrows and the keyboard use the same fold. Another press while a fold is playing interrupts it and starts the next turn, so pages can be passed quickly.
-- While text is selected, a finger swipe must not turn the page. Dragging the selection to select more or less text must still work. Only the page-turn swipe is blocked.
+- While text is selected, a finger swipe must not turn the page. One finger on either selection handle must grow or shrink the selection. Only the page-turn swipe is blocked.
 - While two-finger zoom is above the page zoom, a swipe must not turn the page. See `docs/pdf-viewer-zoom.md`.

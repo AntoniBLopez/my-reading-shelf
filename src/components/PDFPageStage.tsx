@@ -452,9 +452,9 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   );
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!getCanTurnRef.current()) return;
     if (lockRef.current || gestureRef.current) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    if (!getCanTurnRef.current()) return;
     gestureRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,

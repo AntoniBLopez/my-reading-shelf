@@ -289,10 +289,26 @@
   touch-action: none;
 }
 
-/* While text is selected, ancestors must not keep the touch. Handles need the browser's own drag. */
+/* While text is selected, one finger must drag a selection handle.
+   pan-y / manipulation / a scrolling ancestor make iOS treat that drag as a scroll,
+   so only a two-finger drag could change the selection. */
 .pdf-viewer-selecting,
-.pdf-viewer-selecting .pdf-turn-scene {
+.pdf-viewer-selecting .pdf-turn-scene,
+.pdf-viewer-selecting .textLayer {
   touch-action: auto !important;
+}
+
+.pdf-viewer-scroll.pdf-viewer-text-selected {
+  overflow: hidden !important;
+  -webkit-overflow-scrolling: auto;
+  touch-action: auto !important;
+}
+
+.pdf-viewer-text-selected,
+.pdf-viewer-text-selected * {
+  touch-action: auto !important;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .pdf-turn-scene[data-turn] {

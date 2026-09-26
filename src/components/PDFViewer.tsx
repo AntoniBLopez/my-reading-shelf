@@ -168,12 +168,21 @@ function PDFViewerComponent({
   const lastRawWidthRef = useRef<number>(600);
   const resizeRafRef = useRef<number | null>(null);
   const isTextSelectedRef = useRef(false);
+  const savedScrollRef = useRef({ top: 0, left: 0 });
+  const [textSelected, setTextSelected] = useState(false);
   const scaleTouchedRef = useRef(false);
   const autoFullscreenScaleRef = useRef(false);
   const stageRef = useRef<PDFPageStageHandle>(null);
 
   const isAtBaseZoom = fingerZoom <= 1 + BASE_ZOOM_TOLERANCE;
   isAtBaseZoomRef.current = isAtBaseZoom;
+
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll || (!textSelected && !savedScrollRef.current.top && !savedScrollRef.current.left)) return;
+    scroll.scrollTop = savedScrollRef.current.top;
+    scroll.scrollLeft = savedScrollRef.current.left;
+  }, [textSelected]);
 
   // Recenter only when the page zoom changes (header, field, +/-). Finger pinch
   // keeps its own pan and must not be pulled back to the middle.
@@ -267,17 +276,37 @@ function PDFViewerComponent({
   useEffect(() => {
     if (!isOpen) {
       isTextSelectedRef.current = false;
+      setTextSelected(false);
       return;
     }
+    let frame = 0;
     const onSelectionChange = () => {
       const selected = hasActiveTextSelection(containerRef.current);
+      const scroll = scrollRef.current;
+      if (selected && scroll && !isTextSelectedRef.current) {
+        savedScrollRef.current = { top: scroll.scrollTop, left: scroll.scrollLeft };
+      }
       isTextSelectedRef.current = selected;
       containerRef.current?.classList.toggle('pdf-viewer-selecting', selected);
+      if (!selected) {
+        cancelAnimationFrame(frame);
+        scroll?.classList.remove('pdf-viewer-text-selected');
+        setTextSelected(false);
+        return;
+      }
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!isTextSelectedRef.current) return;
+        scrollRef.current?.classList.add('pdf-viewer-text-selected');
+        setTextSelected(true);
+      });
     };
     document.addEventListener('selectionchange', onSelectionChange);
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener('selectionchange', onSelectionChange);
       isTextSelectedRef.current = false;
+      setTextSelected(false);
     };
   }, [isOpen]);
 
@@ -564,6 +593,7 @@ function PDFViewerComponent({
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
+      if (isTextSelectedRef.current) return;
       const start = touchStartRef.current;
       if (!start) return;
       if (e.touches.length === 2 && start.distance > 0) {
@@ -685,6 +715,7 @@ function PDFViewerComponent({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.pointerType !== 'touch') return;
+      if (isTextSelectedRef.current) return;
 
       const now = Date.now();
       const { clientX: x, clientY: y } = e;
@@ -1034,14 +1065,15 @@ function PDFViewerComponent({
             ref={scrollRef}
             className={cn(
               'relative flex-1 min-w-0 min-h-0 overflow-auto bg-white dark:bg-black overscroll-contain pdf-viewer-scroll',
-              !isAtBaseZoom && 'pdf-viewer-scroll--zoomed'
+              !isAtBaseZoom && 'pdf-viewer-scroll--zoomed',
+              textSelected && 'pdf-viewer-text-selected'
             )}
           >
             <div
               ref={containerRef}
               className={cn(
                 'relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 bg-white dark:bg-black',
-                isAtBaseZoom ? 'touch-manipulation' : 'touch-none'
+                textSelected ? 'pdf-viewer-selecting' : isAtBaseZoom ? 'touch-manipulation' : 'touch-none'
               )}
               onPointerDown={handlePointerDown}
               onDoubleClick={handleDoubleClick}
