@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useTheme } from 'next-themes';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { cn } from '@/lib/utils';
 import { createPageCurl, PageCurlSession } from '@/components/pdfPageCurl';
@@ -99,6 +100,8 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   slotsRef.current = slots;
 
   const file = useMemo(() => props.pdfUrl, [props.pdfUrl]);
+  const { resolvedTheme } = useTheme();
+  const themeKey = resolvedTheme === 'dark' ? 'dark' : 'light';
 
   const coverLeaf = useCallback((covered: boolean) => {
     leafRef.current?.classList.toggle('pdf-turn-leaf--covered', covered);
@@ -133,15 +136,26 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     onTurnActiveRef.current?.(false);
   }, [dropCurl]);
 
-  const rememberSettle = useCallback(
+  const holdCurlUntilPage = useCallback(
     (target: number) => {
       const gen = ++settleGenRef.current;
       pendingLeafRef.current = target;
       turnTargetRef.current = target;
-      window.setTimeout(() => {
-        if (settleGenRef.current !== gen) return;
-        if (pendingLeafRef.current === target) finishSettle();
-      }, 500);
+      const finish = () => {
+        if (settleGenRef.current !== gen || pendingLeafRef.current !== target) return;
+        finishSettle();
+      };
+      window.setTimeout(finish, 500);
+      const watch = () => {
+        if (settleGenRef.current !== gen || pendingLeafRef.current !== target) return;
+        const canvas = leafRef.current?.querySelector('canvas');
+        if (canvas && Number(canvas.dataset.page) === target && canvas.width >= 2) {
+          window.requestAnimationFrame(() => window.requestAnimationFrame(finish));
+          return;
+        }
+        window.requestAnimationFrame(watch);
+      };
+      window.requestAnimationFrame(watch);
     },
     [finishSettle]
   );
@@ -160,9 +174,9 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       lockRef.current = true;
       setSlots((current) => ({ ...current, leaf: target }));
       onCommitRef.current(target);
-      rememberSettle(target);
+      holdCurlUntilPage(target);
     },
-    [dropCurl, rememberSettle]
+    [dropCurl, holdCurlUntilPage]
   );
 
   const pageCanvas = (root: HTMLElement | null) => {
@@ -238,19 +252,21 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         },
         onResult: (committed) => {
           if (gen !== curlGenRef.current) return;
-          curlRef.current = null;
           curlLaunchRef.current = false;
-          if (committed && !alreadyCommitted) {
+          if (!committed) {
+            dropCurl();
+            lockRef.current = false;
+            commitOnceRef.current = false;
+            progressRef.current = 0;
+            if (turnTargetRef.current === target) turnTargetRef.current = null;
+            onTurnActiveRef.current?.(false);
+            return;
+          }
+          if (!alreadyCommitted) {
             settleTo(target);
             return;
           }
-          coverLeaf(false);
-          if (turnTargetRef.current !== target) return;
-          lockRef.current = false;
-          commitOnceRef.current = false;
-          progressRef.current = 0;
-          if (!committed) turnTargetRef.current = null;
-          onTurnActiveRef.current?.(false);
+          holdCurlUntilPage(target);
         },
       }).then((session) => {
         if (gen !== curlGenRef.current) {
@@ -272,7 +288,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       });
       return true;
     },
-    [coverLeaf, settleTo]
+    [coverLeaf, dropCurl, holdCurlUntilPage, settleTo]
   );
 
   const revertTurn = useCallback(() => {
@@ -354,6 +370,10 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   );
 
   useEffect(() => {
+    dropCurl();
+  }, [themeKey, dropCurl]);
+
+  useEffect(() => {
     if (lockRef.current) return;
     setSlots({
       leaf: props.pageNumber,
@@ -367,11 +387,25 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   useEffect(() => {
     const el = sceneRef.current;
     if (!el) return;
+    const syncSelection = () => {
+      const selection = window.getSelection();
+      const selected = !!(
+        selection &&
+        !selection.isCollapsed &&
+        selection.toString().trim() &&
+        selection.anchorNode &&
+        el.contains(selection.anchorNode)
+      );
+      el.classList.toggle('pdf-turn-scene--selecting', selected);
+    };
+    document.addEventListener('selectionchange', syncSelection);
+    syncSelection();
     const onMove = (event: TouchEvent) => {
-      if (gestureRef.current?.active) event.preventDefault();
+      if (gestureRef.current?.active && getCanTurnRef.current()) event.preventDefault();
     };
     el.addEventListener('touchmove', onMove, { passive: false });
     return () => {
+      document.removeEventListener('selectionchange', syncSelection);
       el.removeEventListener('touchmove', onMove);
       dropCurl();
     };
@@ -452,11 +486,16 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
 
-      if (!gesture.active) {
-        if (!getCanTurnRef.current()) {
-          gestureRef.current = null;
-          return;
+      if (!getCanTurnRef.current()) {
+        if (gesture.active && event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
         }
+        event.currentTarget.style.touchAction = '';
+        gestureRef.current = null;
+        return;
+      }
+
+      if (!gesture.active) {
         if (Math.abs(dy) > DRAG_START_PX && Math.abs(dy) > Math.abs(dx)) {
           gestureRef.current = null;
           return;
@@ -529,7 +568,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const showAhead = inBook(slots.ahead);
 
   return (
-    <div className="pdf-viewer-pdf-wrapper" data-show-border={props.showBookBorder}>
+    <div className="pdf-viewer-pdf-wrapper" data-show-border={props.showBookBorder} data-theme={themeKey}>
       <Document
         file={file}
         options={pdfDocOptions}
@@ -551,6 +590,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
             <div ref={behindRef} className="pdf-turn-under" aria-hidden>
               <Page
                 {...pageProps}
+                key={`${themeKey}-${slots.behind}`}
                 pageNumber={slots.behind}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
@@ -562,6 +602,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
             <div ref={prevUnderRef} className="pdf-turn-under pdf-turn-under--prev" aria-hidden>
               <Page
                 {...pageProps}
+                key={`${themeKey}-${slots.prev}`}
                 pageNumber={slots.prev}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
@@ -573,6 +614,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
             <div ref={nextUnderRef} className="pdf-turn-under pdf-turn-under--next" aria-hidden>
               <Page
                 {...pageProps}
+                key={`${themeKey}-${slots.next}`}
                 pageNumber={slots.next}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
@@ -584,6 +626,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
             <div ref={aheadRef} className="pdf-turn-under" aria-hidden>
               <Page
                 {...pageProps}
+                key={`${themeKey}-${slots.ahead}`}
                 pageNumber={slots.ahead}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
@@ -594,6 +637,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
           <div ref={leafRef} className="pdf-turn-leaf">
             <Page
               {...pageProps}
+              key={`${themeKey}-${slots.leaf}`}
               pageNumber={slots.leaf}
               renderTextLayer
               renderAnnotationLayer

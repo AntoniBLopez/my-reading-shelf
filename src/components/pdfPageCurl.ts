@@ -57,6 +57,42 @@ function snapshotCanvas(
   return copy.toDataURL('image/jpeg', 0.82);
 }
 
+type FoldingPage = {
+  state: {
+    area: Array<{ x: number; y: number } | null>;
+    position: { x: number; y: number };
+    angle: number;
+  };
+  render: {
+    getContext: () => CanvasRenderingContext2D;
+    convertToGlobal: (point: { x: number; y: number }) => { x: number; y: number };
+  };
+  draw: () => void;
+};
+
+/** Back of the folding sheet only. The flat front face still uses the page image. */
+function paintBlankBack(page: FoldingPage, dark: boolean) {
+  const context = page.render.getContext();
+  const origin = page.render.convertToGlobal(page.state.position);
+  context.save();
+  context.translate(origin.x, origin.y);
+  context.beginPath();
+  let moved = false;
+  for (const point of page.state.area) {
+    if (!point) continue;
+    const global = page.render.convertToGlobal(point);
+    context.lineTo(global.x - origin.x, global.y - origin.y);
+    moved = true;
+  }
+  if (moved) {
+    context.closePath();
+    context.rotate(page.state.angle);
+    context.fillStyle = dark ? '#000000' : '#ffffff';
+    context.fill();
+  }
+  context.restore();
+}
+
 function isOpaqueWhite(style: CanvasRenderingContext2D['fillStyle']): boolean {
   if (typeof style !== 'string') return false;
   const value = style.replace(/\s/g, '').toLowerCase();
@@ -197,8 +233,9 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   const finish = (committed: boolean) => {
     if (settled) return;
     settled = true;
-    if (!committed) removeDom();
     args.onResult(committed);
+    // A committed turn stays up until the real page has painted. Removing it here flashes the page.
+    if (!committed) removeDom();
   };
 
   const playAuto = () => {
@@ -275,6 +312,8 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   };
   flip.on('init', reveal);
   flip.loadFromImages(images);
+  const folding = flip.getPage(0) as FoldingPage;
+  folding.draw = () => paintBlankBack(folding, args.invert);
   adaptCurlCanvas(host, args.invert);
   host.querySelector('canvas')?.style.setProperty('filter', 'none', 'important');
   window.setTimeout(reveal, 80);

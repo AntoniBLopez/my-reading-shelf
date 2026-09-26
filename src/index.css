@@ -236,18 +236,24 @@
   contain: layout;
 }
 
-.dark .pdf-viewer-pdf-wrapper {
+.dark .pdf-viewer-pdf-wrapper,
+.pdf-viewer-pdf-wrapper[data-theme='dark'] {
   background-color: rgb(0 0 0) !important;
 }
 
 .dark .pdf-viewer-pdf-wrapper .react-pdf__Document,
-.dark .pdf-viewer-pdf-wrapper .react-pdf__Page {
+.dark .pdf-viewer-pdf-wrapper .react-pdf__Page,
+.pdf-viewer-pdf-wrapper[data-theme='dark'] .react-pdf__Document,
+.pdf-viewer-pdf-wrapper[data-theme='dark'] .react-pdf__Page {
   background-color: rgb(0 0 0) !important;
 }
 
 .dark .pdf-viewer-pdf-wrapper canvas,
 .dark .pdf-viewer-pdf-wrapper .react-pdf__Page__textContent,
-.dark .pdf-viewer-pdf-wrapper .react-pdf__Page__annotations {
+.dark .pdf-viewer-pdf-wrapper .react-pdf__Page__annotations,
+.pdf-viewer-pdf-wrapper[data-theme='dark'] canvas,
+.pdf-viewer-pdf-wrapper[data-theme='dark'] .react-pdf__Page__textContent,
+.pdf-viewer-pdf-wrapper[data-theme='dark'] .react-pdf__Page__annotations {
   filter: invert(1) !important;
 }
 
@@ -281,6 +287,11 @@
 
 .pdf-turn-scene--free {
   touch-action: none;
+}
+
+/* While text is selected, the browser must own the drag so the selection handles can move. */
+.pdf-turn-scene--selecting {
+  touch-action: manipulation;
 }
 
 .pdf-turn-scene[data-turn] {
