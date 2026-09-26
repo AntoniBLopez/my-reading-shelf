@@ -107,34 +107,46 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     leafRef.current?.classList.toggle('pdf-turn-leaf--covered', covered);
   }, []);
 
-  const dropCurl = useCallback(() => {
+  const removeCurlOverlay = useCallback(() => {
     curlGenRef.current += 1;
     curlRef.current?.destroy();
     curlRef.current = null;
     sceneRef.current?.querySelectorAll('.pdf-page-curl').forEach((node) => node.remove());
     curlLaunchRef.current = false;
     pendingReleaseRef.current = null;
+  }, []);
+
+  const dropCurl = useCallback(() => {
+    removeCurlOverlay();
     coverLeaf(false);
-  }, [coverLeaf]);
+  }, [coverLeaf, removeCurlOverlay]);
 
   const finishSettle = useCallback(() => {
     const target = pendingLeafRef.current;
     if (target == null) return;
+    const gen = settleGenRef.current;
     pendingLeafRef.current = null;
     if (turnTargetRef.current === target) turnTargetRef.current = null;
-    dropCurl();
-    setSlots({
-      leaf: target,
-      next: target + 1,
-      prev: target - 1,
-      ahead: target + 2,
-      behind: target - 2,
-    });
-    lockRef.current = false;
-    commitOnceRef.current = false;
-    progressRef.current = 0;
-    onTurnActiveRef.current?.(false);
-  }, [dropCurl]);
+
+    // Show the real page under the curl first, then drop the overlay once it has painted.
+    coverLeaf(false);
+    const finalize = () => {
+      if (settleGenRef.current !== gen) return;
+      removeCurlOverlay();
+      setSlots({
+        leaf: target,
+        next: target + 1,
+        prev: target - 1,
+        ahead: target + 2,
+        behind: target - 2,
+      });
+      lockRef.current = false;
+      commitOnceRef.current = false;
+      progressRef.current = 0;
+      onTurnActiveRef.current?.(false);
+    };
+    window.requestAnimationFrame(() => window.requestAnimationFrame(finalize));
+  }, [coverLeaf, removeCurlOverlay]);
 
   const holdCurlUntilPage = useCallback(
     (target: number) => {
@@ -149,8 +161,13 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       const watch = () => {
         if (settleGenRef.current !== gen || pendingLeafRef.current !== target) return;
         const canvas = leafRef.current?.querySelector('canvas');
-        if (canvas && Number(canvas.dataset.page) === target && canvas.width >= 2) {
-          window.requestAnimationFrame(() => window.requestAnimationFrame(finish));
+        const painted =
+          canvas &&
+          Number(canvas.dataset.page) === target &&
+          canvas.width >= 2 &&
+          canvas.style.visibility !== 'hidden';
+        if (painted) {
+          window.requestAnimationFrame(finish);
           return;
         }
         window.requestAnimationFrame(watch);
@@ -177,7 +194,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       onCommitRef.current(target);
       holdCurlUntilPage(target);
     },
-    [dropCurl, holdCurlUntilPage]
+    [dropCurl, coverLeaf, holdCurlUntilPage]
   );
 
   const pageCanvas = (root: HTMLElement | null) => {
