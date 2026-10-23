@@ -12,7 +12,7 @@ vi.mock('next-themes', () => ({
 vi.mock('react-pdf', async () => {
   const React = await import('react');
   return {
-    pdfjs: {},
+    pdfjs: { GlobalWorkerOptions: { workerSrc: '' } },
     Document: ({ children, className }: { children: React.ReactNode; className?: string }) => (
       <div className={className}>{children}</div>
     ),
