@@ -30,6 +30,7 @@ import {
 import { cn } from '@/lib/utils';
 import { PDFPageStage, PDFPageStageHandle } from '@/components/PDFPageStage';
 import { RsvpLaunchButton, RsvpOverlay } from '@/components/rsvp/RsvpOverlay';
+import { usePdfFigures } from '@/hooks/usePdfFigures';
 import { useReaderPageText } from '@/hooks/useReaderPageText';
 import type { ReadablePdf } from '@/lib/rsvp/pageText';
 const MIN_SCALE = 0.1;
@@ -425,6 +426,7 @@ function PDFViewerComponent({
   }, []);
 
   const { rememberPageText, loadPageText } = useReaderPageText(pdfUrl, pdfDocRef, pinchContentRef);
+  const figures = usePdfFigures(pdfUrl, pdfDocRef);
 
   useEffect(() => {
     if (!isOpen) setRsvpOpen(false);
@@ -1150,6 +1152,9 @@ function PDFViewerComponent({
             loadPageText={loadPageText}
             onNextPage={() => goToPage(pageNumber + 1)}
             onClose={() => setRsvpOpen(false)}
+            resolveFigure={figures.resolveFigure}
+            listOrphans={figures.listOrphans}
+            prefetchFigures={figures.prefetch}
           />
         )}
       </DialogContent>

@@ -5,6 +5,8 @@ import { readStoredWpm, storeWpm } from '@/lib/rsvp/wpm';
 
 interface UseRsvpOptions {
   autoPlay?: boolean;
+  /** Return true to hold the current word and pause. PDF work must stay outside this callback. */
+  beforeAdvance?: (index: number) => boolean;
 }
 
 export function useRsvp(tokens: RsvpToken[], options: UseRsvpOptions = {}) {
@@ -18,10 +20,12 @@ export function useRsvp(tokens: RsvpToken[], options: UseRsvpOptions = {}) {
   const finishedRef = useRef(finished);
   const wpmRef = useRef(wpm);
   const indexRef = useRef(index);
+  const beforeAdvanceRef = useRef(options.beforeAdvance);
   playingRef.current = playing;
   finishedRef.current = finished;
   wpmRef.current = wpm;
   indexRef.current = index;
+  beforeAdvanceRef.current = options.beforeAdvance;
 
   useEffect(() => {
     if (!playing) return;
@@ -34,6 +38,10 @@ export function useRsvp(tokens: RsvpToken[], options: UseRsvpOptions = {}) {
       return;
     }
     const timer = window.setTimeout(() => {
+      if (beforeAdvanceRef.current?.(index)) {
+        setPlaying(false);
+        return;
+      }
       if (index >= list.length - 1) {
         finishedRef.current = true;
         setFinished(true);

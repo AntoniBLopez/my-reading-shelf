@@ -1,3 +1,4 @@
+import type { FigureCue } from '@/lib/rsvp/figures/types';
 import { delayFactor } from '@/lib/rsvp/timing';
 
 export interface RsvpToken {
@@ -5,6 +6,8 @@ export interface RsvpToken {
   /** Index of the highlighted optimal recognition point inside `word`. */
   orpIndex: number;
   delayFactor: number;
+  /** Present on the last word of the first mention of a figure or table. */
+  figureAfter?: FigureCue;
 }
 
 /**
