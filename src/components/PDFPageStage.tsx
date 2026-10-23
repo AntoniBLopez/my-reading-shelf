@@ -9,9 +9,15 @@ import React, {
 } from 'react';
 import { useTheme } from 'next-themes';
 import { Document, Page, pdfjs } from 'react-pdf';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { cn } from '@/lib/utils';
 import { createPageCurl, PageCurlSession } from '@/components/pdfPageCurl';
 import type { ReadablePdf } from '@/lib/rsvp/pageText';
+import 'react-pdf/src/Page/AnnotationLayer.css';
+import 'react-pdf/src/Page/TextLayer.css';
+
+// Same module as <Document>/<Page>, and a local worker so the reader works offline.
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const DRAG_START_PX = 18;
 const COMMIT_PROGRESS = 0.28;
@@ -586,6 +592,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       <Document
         file={file}
         options={pdfDocOptions}
+        suspense={false}
         onLoadSuccess={props.onDocumentLoadSuccess}
         onLoadError={props.onDocumentLoadError}
         onItemClick={props.onItemClick}

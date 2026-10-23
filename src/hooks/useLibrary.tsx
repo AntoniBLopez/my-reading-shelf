@@ -24,7 +24,7 @@ import {
   enqueuePendingStructureOperation,
   removePendingStructureOperations,
   type PendingStructureOperation,
-  type PendingStructureOperationInput,
+  type PendingStructureOperationDraft,
   LOCAL_USER_ID,
 } from '@/lib/localStorage';
 
@@ -113,7 +113,7 @@ export function useLibrary() {
 
   const enqueueRemoteStructureOperation = useCallback(
     (
-      operation: Omit<PendingStructureOperationInput, 'user_id'>,
+      operation: PendingStructureOperationDraft,
       notify = true
     ) => {
       if (!user) return;
@@ -158,14 +158,17 @@ export function useLibrary() {
       toast.error('Error al cargar libros');
       console.error(error);
     } else {
-      const booksWithProgress = (data || []).map(book => ({
-        ...book,
-        description: (book as any).description ?? null,
-        current_page: (book as any).current_page ?? 0,
-        total_pages: (book as any).total_pages ?? 0,
-        position: (book as any).position ?? 0,
-        last_viewed_at: (book as any).last_viewed_at ?? null,
-      })) as Book[];
+      const booksWithProgress = (data || []).map(book => {
+        const row = book as Partial<Book>;
+        return {
+          ...book,
+          description: row.description ?? null,
+          current_page: row.current_page ?? 0,
+          total_pages: row.total_pages ?? 0,
+          position: row.position ?? 0,
+          last_viewed_at: row.last_viewed_at ?? null,
+        };
+      }) as Book[];
       setBooks(booksWithProgress);
     }
   }, [user, isLocal]);
@@ -642,11 +645,12 @@ export function useLibrary() {
       console.error(error);
       return null;
     }
+    const row = data as Partial<Book>;
     const bookWithProgress: Book = {
       ...data,
-      description: (data as any).description ?? null,
-      current_page: (data as any).current_page ?? 0,
-      total_pages: (data as any).total_pages ?? 0,
+      description: row.description ?? null,
+      current_page: row.current_page ?? 0,
+      total_pages: row.total_pages ?? 0,
     };
     setBooks(prev => [bookWithProgress, ...prev]);
     toast.success('Libro añadido');
@@ -1164,6 +1168,7 @@ export function useLibrary() {
     persistLayout({
       folderPositions: newPositions,
       categoryOrder: layout.categoryOrder.filter(cid => cid !== id),
+      bookOrder: layout.bookOrder,
     });
     toast.success('Categoría eliminada');
     return true;
@@ -1199,6 +1204,7 @@ export function useLibrary() {
       persistLayout({
         folderPositions: newPositions,
         categoryOrder: layout.categoryOrder.filter(cid => cid !== id),
+        bookOrder: layout.bookOrder,
       });
       enqueueRemoteStructureOperation({
         type: 'category_delete_with_contents',
@@ -1227,6 +1233,7 @@ export function useLibrary() {
     persistLayout({
       folderPositions: newPositions,
       categoryOrder: layout.categoryOrder.filter(cid => cid !== id),
+      bookOrder: layout.bookOrder,
     });
     toast.success('Categoría, carpetas y libros eliminados');
     return true;

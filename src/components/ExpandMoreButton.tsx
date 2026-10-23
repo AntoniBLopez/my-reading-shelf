@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-interface ExpandMoreButtonProps extends React.ComponentProps<typeof Button> {}
+type ExpandMoreButtonProps = React.ComponentProps<typeof Button>;
 
 /**
  * Botón "Mostrar más" / "Minimizar" con ripple en táctil y sin hover en tablet/mobile.

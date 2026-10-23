@@ -1,6 +1,4 @@
 import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { pdfjs } from 'react-pdf';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useTheme } from 'next-themes';
 import { Book } from '@/types/library';
 import { Button } from '@/components/ui/button';
@@ -33,12 +31,6 @@ import { cn } from '@/lib/utils';
 import { PDFPageStage, PDFPageStageHandle } from '@/components/PDFPageStage';
 import { RsvpLaunchButton, RsvpOverlay } from '@/components/rsvp/RsvpOverlay';
 import { readReaderPageText, type ReadablePdf } from '@/lib/rsvp/pageText';
-import 'react-pdf/src/Page/AnnotationLayer.css';
-import 'react-pdf/src/Page/TextLayer.css';
-
-// Keep PDF worker local so viewer works without internet.
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const MOBILE_LAYOUT_QUERY = '(max-width: 1023px)';
