@@ -153,10 +153,11 @@ describe('page turn performance', () => {
     expect(frames).toHaveLength(1);
     const leaf = document.querySelector('.pdf-turn-leaf');
     if (!(leaf instanceof HTMLElement)) throw new Error('missing leaf');
-    expect(leaf.getAttribute('style') ?? '').not.toContain('translate3d');
+    expect(leaf.getAttribute('style') ?? '').not.toContain('rotateY');
 
     flushFrames();
-    expect(leaf.style.transform).toBe('translate3d(-180px,0,0)');
+    const angle = Number(leaf.style.transform.match(/rotateY\(([-\d.]+)deg\)/)?.[1]);
+    expect(angle).toBeCloseTo(-(180 / 300) * 180, 1);
     expect(pageRender).not.toHaveBeenCalled();
   });
 

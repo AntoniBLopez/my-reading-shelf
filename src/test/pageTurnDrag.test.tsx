@@ -163,7 +163,9 @@ describe('page turn drag', () => {
     pointer('pointermove', window, { clientX: 40, clientY: 84 });
     flushFrames();
 
-    expect(leaf().style.transform).toBe('translate3d(-160px,0,0)');
+    const angle = Number(leaf().style.transform.match(/rotateY\(([-\d.]+)deg\)/)?.[1]);
+    expect(leaf().style.transform).toContain('perspective(');
+    expect(angle).toBeCloseTo(-(160 / 300) * 180, 1);
     expect(leaf().classList.contains('pdf-turn-leaf--follow')).toBe(true);
     expect(scene.getAttribute('data-turn')).toBe('next');
     expect(onCommit).not.toHaveBeenCalled();
@@ -221,8 +223,9 @@ describe('page turn drag', () => {
     pointer('pointerdown', scene, { clientX: 40, clientY: 80 });
     pointer('pointermove', window, { clientX: 200, clientY: 80 });
     flushFrames();
-    const offset = Number.parseFloat(leaf().style.transform.match(/translate3d\(([-\d.]+)px/)?.[1] ?? '0');
-    expect(Math.abs(offset)).toBeLessThan(50);
+    const angle = Number.parseFloat(leaf().style.transform.match(/rotateY\(([-\d.]+)deg\)/)?.[1] ?? '0');
+    expect(Math.abs(angle)).toBeGreaterThan(0);
+    expect(Math.abs(angle)).toBeLessThan(30);
     expect(scene.hasAttribute('data-turn')).toBe(false);
     pointer('pointerup', window, { clientX: 200, clientY: 80 });
 

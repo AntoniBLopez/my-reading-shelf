@@ -7,27 +7,39 @@ import path from "path";
 
 const require = createRequire(import.meta.url);
 
-function resolvePdfjsWasmDir(): string {
+function pdfjsPackageDir(): string {
   try {
-    return path.join(path.dirname(require.resolve("pdfjs-dist/package.json")), "wasm");
+    return path.dirname(require.resolve("pdfjs-dist/package.json"));
   } catch {
     const pnpmRoot = path.join(process.cwd(), "node_modules", ".pnpm");
     if (!fs.existsSync(pnpmRoot)) {
-      throw new Error("Unable to locate pdfjs-dist/wasm (pdfjs-dist not installed)");
+      throw new Error("Unable to locate pdfjs-dist (package not installed)");
     }
     const match = fs.readdirSync(pnpmRoot).find((name) => name.startsWith("pdfjs-dist@"));
-    if (!match) {
-      throw new Error("Unable to locate pdfjs-dist/wasm under node_modules/.pnpm");
-    }
-    return path.join(pnpmRoot, match, "node_modules", "pdfjs-dist", "wasm");
+    if (!match) throw new Error("Unable to locate pdfjs-dist under node_modules/.pnpm");
+    return path.join(pnpmRoot, match, "node_modules", "pdfjs-dist");
   }
 }
 
-/** Serve/copy pdf.js OpenJPEG wasm so JPEG2000-scanned PDFs render (e.g. many Gutenberg books). */
-function pdfjsWasm(): Plugin {
+const PDFJS_ASSETS = [
+  { url: "/wasm/", dir: "wasm" },
+  { url: "/cmaps/", dir: "cmaps" },
+  { url: "/standard_fonts/", dir: "standard_fonts" },
+] as const;
+
+function contentType(filePath: string): string | null {
+  if (filePath.endsWith(".wasm")) return "application/wasm";
+  if (filePath.endsWith(".js")) return "application/javascript";
+  if (filePath.endsWith(".pfb") || filePath.endsWith(".ttf")) return "font/ttf";
+  if (filePath.endsWith(".bcmap")) return "application/octet-stream";
+  return null;
+}
+
+/** Serve pdf.js wasm, CMaps, and standard fonts so text extraction works offline. */
+function pdfjsAssets(): Plugin {
   let outDir = "dist";
   let basePath = "/";
-  let pdfjsWasmDir = "";
+  let packageDir = "";
 
   const resolveUrlPath = (rawUrl: string | undefined) => {
     const url = (rawUrl ?? "").split("?")[0];
@@ -39,34 +51,38 @@ function pdfjsWasm(): Plugin {
   };
 
   return {
-    name: "pdfjs-wasm",
+    name: "pdfjs-assets",
     configResolved(config) {
       outDir = config.build.outDir;
       basePath = config.base || "/";
-      pdfjsWasmDir = resolvePdfjsWasmDir();
+      packageDir = pdfjsPackageDir();
     },
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const urlPath = resolveUrlPath(req.url);
-        if (!urlPath.startsWith("/wasm/")) {
+        const asset = PDFJS_ASSETS.find((entry) => urlPath.startsWith(entry.url));
+        if (!asset) {
           next();
           return;
         }
-        const relative = decodeURIComponent(urlPath.slice("/wasm/".length));
-        const filePath = path.join(pdfjsWasmDir, relative);
-        if (!filePath.startsWith(pdfjsWasmDir) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        const root = path.join(packageDir, asset.dir);
+        const relative = decodeURIComponent(urlPath.slice(asset.url.length));
+        const filePath = path.join(root, relative);
+        if (!filePath.startsWith(root) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
           next();
           return;
         }
-        if (filePath.endsWith(".wasm")) res.setHeader("Content-Type", "application/wasm");
-        else if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
+        const type = contentType(filePath);
+        if (type) res.setHeader("Content-Type", type);
         fs.createReadStream(filePath).pipe(res);
       });
     },
     closeBundle() {
-      const target = path.resolve(outDir, "wasm");
-      fs.mkdirSync(target, { recursive: true });
-      fs.cpSync(pdfjsWasmDir, target, { recursive: true });
+      for (const asset of PDFJS_ASSETS) {
+        const target = path.resolve(outDir, asset.dir);
+        fs.mkdirSync(target, { recursive: true });
+        fs.cpSync(path.join(packageDir, asset.dir), target, { recursive: true });
+      }
     },
   };
 }
@@ -84,7 +100,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    pdfjsWasm(),
+    pdfjsAssets(),
     VitePWA({
       registerType: "autoUpdate",
       // Keep service worker off in local dev to avoid noisy Workbox routing warnings.
@@ -92,7 +108,7 @@ export default defineConfig({
       manifest: false,
       workbox: {
         // Include .mjs/.wasm so pdf.js worker + OpenJPEG decode work offline.
-        globPatterns: ["**/*.{js,mjs,css,html,ico,png,svg,webmanifest,wasm}"],
+        globPatterns: ["**/*.{js,mjs,css,html,ico,png,svg,webmanifest,wasm,bcmap,pfb,ttf}"],
         navigateFallback: "index.html",
       },
     }),

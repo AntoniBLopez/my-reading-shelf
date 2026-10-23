@@ -62,6 +62,13 @@ function stripInvisibles(text: string): string {
     .replace(/\uFEFF/g, '');
 }
 
+function textOf(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  // pdf.js builds a run as an array of glyphs before it joins them.
+  if (Array.isArray(value) && value.every((part) => typeof part === 'string')) return value.join('');
+  return null;
+}
+
 function readRun(item: unknown): TextRun | null {
   if (!item || typeof item !== 'object') return null;
   const record = item as {
@@ -74,17 +81,15 @@ function readRun(item: unknown): TextRun | null {
     y?: unknown;
     type?: unknown;
   };
-  if (typeof record.str !== 'string') {
-    if (typeof record.type === 'string') return null;
-    return null;
-  }
+  const str = textOf(record.str);
+  if (str == null) return null;
 
   let x = numberOrNaN(record.x);
   let y = numberOrNaN(record.y);
   const width = numberOrNaN(record.width);
   let height = numberOrNaN(record.height);
-  if (Array.isArray(record.transform) && record.transform.length >= 6) {
-    const transform = record.transform;
+  const transform = matrixOf(record.transform);
+  if (transform) {
     if (!Number.isFinite(x)) x = numberOrNaN(transform[4]);
     if (!Number.isFinite(y)) y = numberOrNaN(transform[5]);
     if (!Number.isFinite(height)) {
@@ -102,7 +107,7 @@ function readRun(item: unknown): TextRun | null {
     height > 0;
 
   return {
-    text: record.str,
+    text: str,
     hasEOL: Boolean(record.hasEOL),
     x,
     y,
@@ -114,6 +119,14 @@ function readRun(item: unknown): TextRun | null {
 
 function numberOrNaN(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
+}
+
+/** pdf.js 6 transfers the text matrix as a typed array, which is not an Array. */
+function matrixOf(value: unknown): ArrayLike<unknown> | null {
+  if (typeof value === 'string' || !value || typeof value !== 'object' || !('length' in value)) return null;
+  const length = (value as { length: unknown }).length;
+  if (typeof length !== 'number' || length < 6) return null;
+  return value as ArrayLike<unknown>;
 }
 
 function isNewLine(prev: TextRun, next: TextRun): boolean {
@@ -187,6 +200,12 @@ function runsFromLayer(layer: Element): unknown[] {
       items.push({ str: '', hasEOL: true });
       return;
     }
+    // pdf.js 6 wraps runs in a marked-content span (display: contents).
+    // The words live in the nested presentation spans, not on the wrapper.
+    if (node.classList.contains('markedContent')) {
+      node.childNodes.forEach(visit);
+      return;
+    }
     if (node.tagName === 'SPAN') {
       items.push({ str: node.textContent ?? '', hasEOL: false });
       return;
@@ -194,7 +213,22 @@ function runsFromLayer(layer: Element): unknown[] {
     node.childNodes.forEach(visit);
   };
   layer.childNodes.forEach(visit);
-  return items;
+  if (items.some((item) => textOf((item as { str?: unknown }).str)?.trim())) return items;
+  const clone = layer.cloneNode(true);
+  if (!(clone instanceof Element)) return items;
+  clone.querySelectorAll('.endOfContent').forEach((node) => node.remove());
+  const text = clone.textContent ?? '';
+  return text.trim() ? [{ str: text, hasEOL: false }] : items;
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 48);
+    requestAnimationFrame(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
 }
 
 export async function readReaderPageText(
@@ -205,12 +239,19 @@ export async function readReaderPageText(
   if (pdf && pageNumber >= 1 && pageNumber <= pdf.numPages) {
     try {
       const page = await pdf.getPage(pageNumber);
+      // pdf.js 6 resolves getTextContent from a worker stream. Ask for the
+      // joined TextContent, then read `str` (typed-array matrices included).
       const content = await page.getTextContent();
-      const text = textItemsToPageText(content.items);
+      const text = textItemsToPageText(content?.items ?? []);
       if (text) return text;
     } catch {
       // Fall through to whatever the reader has on screen.
     }
   }
+  const painted = extractRenderedPageText(renderedRoot);
+  if (painted) return painted;
+  // The text layer appends its spans after the canvas paints. One frame later
+  // they are in the DOM even when the worker stream has not settled.
+  await nextFrame();
   return extractRenderedPageText(renderedRoot);
 }

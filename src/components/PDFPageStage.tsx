@@ -7,15 +7,20 @@ import { useCoarsePointer } from '@/hooks/useCoarsePointer';
 import { usePageSwipe } from '@/hooks/usePageSwipe';
 import { pageDevicePixelRatio } from '@/lib/pageCanvasScale';
 import type { TurnDirection } from '@/lib/pageTurnGesture';
-import type { ReadablePdf } from '@/lib/rsvp/pageText';
+import { textItemsToPageText, type ReadablePdf } from '@/lib/rsvp/pageText';
 import 'react-pdf/src/Page/AnnotationLayer.css';
 import 'react-pdf/src/Page/TextLayer.css';
 
 // Same module as <Document>/<Page>, and a local worker so the reader works offline.
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
+const assetBase = import.meta.env.BASE_URL;
+
 const pdfDocOptions = {
-  wasmUrl: `${import.meta.env.BASE_URL}wasm/`,
+  wasmUrl: `${assetBase}wasm/`,
+  cMapUrl: `${assetBase}cmaps/`,
+  cMapPacked: true,
+  standardFontDataUrl: `${assetBase}standard_fonts/`,
 };
 
 export interface PDFPageStageHandle {
@@ -37,6 +42,7 @@ interface PDFPageStageProps {
   onDocumentLoadSuccess: (pdf: ReadablePdf) => void;
   onDocumentLoadError: (error: Error) => void;
   onItemClick: (args: { pageNumber: number }) => void;
+  onPageText?: (pageNumber: number, text: string) => void;
 }
 
 function slotsFor(page: number) {
@@ -130,6 +136,13 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     settle(page.pageNumber);
   }, [settle]);
 
+  const onPageTextRef = useRef(props.onPageText);
+  onPageTextRef.current = props.onPageText;
+  const handlePageText = useCallback((content: { items?: readonly unknown[] } | null, pageNumber: number) => {
+    const text = textItemsToPageText(content?.items ?? []);
+    if (text) onPageTextRef.current?.(pageNumber, text);
+  }, []);
+
   const pageProps = {
     width: props.pageWidth,
     scale: props.scale,
@@ -167,15 +180,20 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
             </div>
           )}
           <div ref={leafRef} className="pdf-turn-leaf">
-            <Page
-              {...pageProps}
-              devicePixelRatio={leafPixelRatio}
-              key={`${themeKey}-${slots.leaf}`}
-              pageNumber={slots.leaf}
-              renderTextLayer
-              renderAnnotationLayer
-              onRenderSuccess={handleLeafRender}
-            />
+            <div className="pdf-turn-face pdf-turn-face--front">
+              <Page
+                {...pageProps}
+                devicePixelRatio={leafPixelRatio}
+                key={`${themeKey}-${slots.leaf}`}
+                pageNumber={slots.leaf}
+                renderTextLayer
+                renderAnnotationLayer
+                onRenderSuccess={handleLeafRender}
+                onGetTextSuccess={(content) => handlePageText(content, slots.leaf)}
+              />
+              <div className="pdf-turn-crease" aria-hidden />
+            </div>
+            <div className="pdf-turn-face pdf-turn-face--back" aria-hidden />
           </div>
         </div>
       </Document>

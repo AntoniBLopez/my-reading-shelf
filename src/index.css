@@ -269,8 +269,10 @@
 
 .pdf-turn-scene {
   position: relative;
-  overflow: hidden;
+  /* Visible so the 3D sheet is not flattened by a clipping ancestor. */
+  overflow: visible;
   touch-action: pan-y;
+  perspective: 1400px;
 }
 
 .pdf-turn-scene canvas,
@@ -329,6 +331,42 @@
 .pdf-turn-leaf {
   position: relative;
   z-index: 2;
+  transform-style: preserve-3d;
+}
+
+.pdf-turn-face {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.pdf-turn-face--back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.14), transparent 18%),
+    #f4efe6;
+}
+
+.dark .pdf-turn-face--back,
+.pdf-viewer-pdf-wrapper[data-theme='dark'] .pdf-turn-face--back {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 18%),
+    #141414;
+}
+
+.pdf-turn-crease {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: var(--turn-shade, 0);
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.38), transparent 24%);
+}
+
+.pdf-turn-scene[data-turn='prev'] .pdf-turn-crease {
+  background: linear-gradient(270deg, rgba(0, 0, 0, 0.38), transparent 24%);
 }
 
 .pdf-turn-leaf--follow {
@@ -361,8 +399,7 @@
 }
 
 .pdf-turn-scene[data-turn] .pdf-turn-leaf {
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
 }
 
 /* Last sign-in method: brand color on the sides only, transparent top and bottom, soft side glow. */

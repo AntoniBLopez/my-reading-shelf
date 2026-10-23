@@ -30,7 +30,8 @@ import {
 import { cn } from '@/lib/utils';
 import { PDFPageStage, PDFPageStageHandle } from '@/components/PDFPageStage';
 import { RsvpLaunchButton, RsvpOverlay } from '@/components/rsvp/RsvpOverlay';
-import { readReaderPageText, type ReadablePdf } from '@/lib/rsvp/pageText';
+import { useReaderPageText } from '@/hooks/useReaderPageText';
+import type { ReadablePdf } from '@/lib/rsvp/pageText';
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const MOBILE_LAYOUT_QUERY = '(max-width: 1023px)';
@@ -423,9 +424,7 @@ function PDFViewerComponent({
     setReloadAttempt((prev) => prev + 1);
   }, []);
 
-  useEffect(() => {
-    pdfDocRef.current = null;
-  }, [pdfUrl]);
+  const { rememberPageText, loadPageText } = useReaderPageText(pdfUrl, pdfDocRef, pinchContentRef);
 
   useEffect(() => {
     if (!isOpen) setRsvpOpen(false);
@@ -822,10 +821,6 @@ function PDFViewerComponent({
     };
   }, []);
 
-  const loadPageText = useCallback((page: number) => {
-    return readReaderPageText(pdfDocRef.current, page, pinchContentRef.current);
-  }, []);
-
   const handleClose = useCallback(() => {
     // Save final progress before closing
     if (numPages > 0) {
@@ -1130,6 +1125,7 @@ function PDFViewerComponent({
                     onDocumentLoadSuccess={onDocumentLoadSuccess}
                     onDocumentLoadError={onDocumentLoadError}
                     onItemClick={onInternalLinkClick}
+                    onPageText={rememberPageText}
                   />
                 </div>
               )}

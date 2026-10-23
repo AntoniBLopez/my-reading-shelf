@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
+import { dragProgress, flipPose, flipTransform, grabRatio, type FlipPose } from '@/lib/pageTurnFlip';
 import {
   directionFromDx,
   gesturePhase,
   GLIDE_MS,
   isEdgeBlocked,
-  leafOffsetPx,
   nextVelocity,
-  releaseOffsetPx,
   shouldCommitTurn,
   targetPage,
   turnProgress,
@@ -25,6 +24,8 @@ type Gesture = {
   dir: TurnDirection | null;
   active: boolean;
   width: number;
+  height: number;
+  top: number;
 };
 
 type UsePageSwipeArgs = {
@@ -38,12 +39,11 @@ type UsePageSwipeArgs = {
 };
 
 type PendingPaint = {
-  x: number;
+  pose: FlipPose;
   dir: TurnDirection | null;
 };
 
 const SETTLE_FALLBACK_MS = 480;
-
 function prefersReducedMotion() {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
@@ -97,7 +97,7 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     pendingPaintRef.current = null;
   };
 
-  const paint = (x: number, mode: 'follow' | 'glide' | 'rest') => {
+  const paint = (pose: FlipPose | null, mode: 'follow' | 'glide' | 'rest') => {
     const leaf = leafRef.current;
     if (!leaf) return;
     if (paintModeRef.current !== mode) {
@@ -105,7 +105,16 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       leaf.classList.toggle('pdf-turn-leaf--follow', mode === 'follow');
       leaf.classList.toggle('pdf-turn-leaf--glide', mode === 'glide');
     }
-    leaf.style.transform = mode === 'rest' ? '' : `translate3d(${x}px,0,0)`;
+    const scene = sceneRef.current;
+    if (!pose || mode === 'rest') {
+      leaf.style.transform = '';
+      leaf.style.transformOrigin = '';
+      scene?.style.removeProperty('--turn-shade');
+      return;
+    }
+    leaf.style.transformOrigin = pose.origin;
+    leaf.style.transform = flipTransform(pose);
+    scene?.style.setProperty('--turn-shade', pose.shade.toFixed(3));
   };
 
   const setTurn = (dir: TurnDirection | null) => {
@@ -121,11 +130,11 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     if (!pending) return;
     pendingPaintRef.current = null;
     setTurn(pending.dir);
-    paint(pending.x, 'follow');
+    paint(pending.pose, 'follow');
   };
 
-  const scheduleFollow = (x: number, dir: TurnDirection | null) => {
-    pendingPaintRef.current = { x, dir };
+  const scheduleFollow = (pose: FlipPose, dir: TurnDirection | null) => {
+    pendingPaintRef.current = { pose, dir };
     if (rafRef.current) return;
     rafRef.current = requestAnimationFrame(drawFollow);
   };
@@ -154,7 +163,7 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     if (pendingTargetRef.current == null) return;
     pendingTargetRef.current = null;
     clearSettle();
-    paint(0, 'rest');
+    paint(null, 'rest');
     setTurn(null);
     lockRef.current = false;
     notifyActive(false);
@@ -177,14 +186,14 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     settleTimerRef.current = setTimeout(finishSettle, SETTLE_FALLBACK_MS);
   };
 
-  const glideTo = (x: number, then: () => void) => {
+  const glideTo = (pose: FlipPose, then: () => void) => {
     clearGlide();
     if (prefersReducedMotion()) {
-      paint(x, 'rest');
+      paint(null, 'rest');
       then();
       return;
     }
-    paint(x, 'glide');
+    paint(pose, 'glide');
     const leaf = leafRef.current;
     let done = false;
     const finish = () => {
@@ -204,7 +213,7 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     clearGlide();
     clearSettle();
     pendingTargetRef.current = null;
-    paint(0, 'rest');
+    paint(null, 'rest');
     setTurn(null);
     gestureRef.current = null;
     lockRef.current = false;
@@ -221,12 +230,13 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       return;
     }
     const blocked = isEdgeBlocked(gesture.dir, pageRef.current, pageCountRef.current);
-    const progress = turnProgress(gesture.lastX - gesture.startX, gesture.width, gesture.dir);
+    const dx = gesture.lastX - gesture.startX;
+    const progress = turnProgress(dx, gesture.width, gesture.dir);
     const commit = shouldCommitTurn({ progress, vx: gesture.vx, dir: gesture.dir, blocked });
     lockRef.current = true;
-    const dest = releaseOffsetPx(gesture.width, gesture.dir, commit);
+    const grabY = grabRatio(gesture.lastY, gesture.top, gesture.height);
     const target = targetPage(pageRef.current, gesture.dir);
-    glideTo(dest, () => {
+    glideTo(flipPose(commit ? 1 : 0, gesture.dir, grabY), () => {
       if (commit) finishCommit(target);
       else resetSheet();
     });
@@ -262,7 +272,9 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       gesture.lastY = event.clientY;
       gesture.lastT = now;
       const blocked = isEdgeBlocked(gesture.dir, pageRef.current, pageCountRef.current);
-      scheduleFollow(leafOffsetPx(dx, gesture.width, gesture.dir, blocked), blocked ? null : gesture.dir);
+      const grabY = grabRatio(event.clientY, gesture.top, gesture.height);
+      const progress = dragProgress(dx, gesture.width, gesture.dir, blocked);
+      scheduleFollow(flipPose(progress, gesture.dir, grabY), blocked ? null : gesture.dir);
     };
     const onUp = (event: PointerEvent) => {
       pointersRef.current.delete(event.pointerId);
@@ -296,7 +308,7 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     if (event.pointerType === 'mouse' && event.button != null && event.button !== 0) return;
     const target = event.target;
     if (target instanceof Element && target.closest('a, button, input, textarea, select')) return;
-    const width = Math.max(1, leafRef.current?.getBoundingClientRect().width || 1);
+    const box = leafRef.current?.getBoundingClientRect();
     gestureRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -307,7 +319,9 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       vx: 0,
       dir: null,
       active: false,
-      width,
+      width: Math.max(1, box?.width || 1),
+      height: Math.max(1, box?.height || 1),
+      top: box?.top || 0,
     };
   }, [leafRef]);
 
@@ -315,13 +329,12 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     if (lockRef.current || gestureRef.current?.active) return;
     if (!enabledRef.current()) return;
     if (isEdgeBlocked(dir, pageRef.current, pageCountRef.current)) return;
-    const width = Math.max(1, leafRef.current?.getBoundingClientRect().width || 1);
     const target = targetPage(pageRef.current, dir);
     lockRef.current = true;
     notifyActive(true);
     setTurn(dir);
-    glideTo(releaseOffsetPx(width, dir, true), () => finishCommit(target));
-  }, [leafRef]);
+    glideTo(flipPose(1, dir, 0.5), () => finishCommit(target));
+  }, []);
 
   const cancel = useCallback(() => {
     if (lockRef.current && !gestureRef.current) return;
