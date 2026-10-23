@@ -92,6 +92,14 @@ export type PendingStructureOperation =
       created_at: string;
     };
 
+/** Distributive omit so each operation keeps its own fields. `Omit` on the union collapses them. */
+export type PendingStructureOperationDraft = {
+  [K in PendingStructureOperationInput['type']]: Omit<
+    Extract<PendingStructureOperationInput, { type: K }>,
+    'user_id'
+  >;
+}[PendingStructureOperationInput['type']];
+
 export type PendingStructureOperationInput =
   | {
       user_id: string;

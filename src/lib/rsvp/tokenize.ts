@@ -16,13 +16,8 @@ export function orpIndex(word: string): number {
   const leading = word.match(/^[^\p{L}\p{N}]*/u)?.[0].length ?? 0;
   const core = word.slice(leading).replace(/[^\p{L}\p{N}]+$/u, '');
   const length = core.length;
-  let pivot = 0;
-  if (length <= 1) pivot = 0;
-  else if (length <= 5) pivot = 1;
-  else if (length <= 9) pivot = 2;
-  else if (length <= 13) pivot = 3;
-  else pivot = 4;
   if (length === 0) return 0;
+  const pivot = length <= 1 ? 0 : length <= 5 ? 1 : length <= 9 ? 2 : length <= 13 ? 3 : 4;
   return Math.min(word.length - 1, leading + pivot);
 }
 

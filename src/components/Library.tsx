@@ -90,7 +90,7 @@ interface LibraryProps {
   /** Book ID from URL (?book=xxx) - used to auto-expand folder and open viewer */
   openBookId?: string | null;
   getOrderedSections: () => { uncategorized: Folder[]; categories: { category: FolderCategory; folders: Folder[] }[] };
-  onCreateFolder: (name: string, description?: string) => Promise<any>;
+  onCreateFolder: (name: string, description?: string) => Promise<unknown>;
   onUpdateFolder: (id: string, updates: Partial<Pick<Folder, 'name' | 'description'>>) => Promise<boolean>;
   onDeleteFolder: (id: string) => Promise<boolean>;
   onCreateCategory: (name: string) => Promise<FolderCategory | null>;

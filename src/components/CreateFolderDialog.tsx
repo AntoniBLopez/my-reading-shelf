@@ -13,7 +13,7 @@ import {
 import { FolderPlus, Loader2 } from 'lucide-react';
 
 interface CreateFolderDialogProps {
-  onCreate: (name: string, description?: string) => Promise<any>;
+  onCreate: (name: string, description?: string) => Promise<unknown>;
 }
 
 export function CreateFolderDialog({ onCreate }: CreateFolderDialogProps) {
