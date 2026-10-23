@@ -11,6 +11,7 @@ import { useTheme } from 'next-themes';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { cn } from '@/lib/utils';
 import { createPageCurl, PageCurlSession } from '@/components/pdfPageCurl';
+import type { ReadablePdf } from '@/lib/rsvp/pageText';
 
 const DRAG_START_PX = 18;
 const COMMIT_PROGRESS = 0.28;
@@ -51,7 +52,7 @@ interface PDFPageStageProps {
   panFree?: boolean;
   onCommit: (page: number) => void;
   onTurnActive?: (active: boolean) => void;
-  onDocumentLoadSuccess: (args: { numPages: number }) => void;
+  onDocumentLoadSuccess: (pdf: ReadablePdf) => void;
   onDocumentLoadError: (error: Error) => void;
   onItemClick: (args: { pageNumber: number }) => void;
 }
