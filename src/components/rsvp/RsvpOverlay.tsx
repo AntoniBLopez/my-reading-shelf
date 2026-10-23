@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -69,7 +69,8 @@ export function RsvpOverlay({ pageNumber, hasNextPage, loadPageText, onNextPage,
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [onClose]);
 
-  const tokens = state.status === 'ready' ? tokenize(state.text) : [];
+  const pageText = state.status === 'ready' ? state.text : '';
+  const tokens = useMemo(() => (pageText ? tokenize(pageText) : []), [pageText]);
 
   return (
     <div

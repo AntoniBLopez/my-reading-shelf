@@ -3,7 +3,11 @@ interface RsvpWordProps {
   orpIndex: number;
 }
 
-/** One word, with the recognition letter locked to the horizontal center. */
+/**
+ * One word. The pivot letter is the middle grid column, so it stays put.
+ * Side columns share the leftover width equally; text grows away from the pivot.
+ * Spans are adjacent so JSX indentation cannot insert a space between letters.
+ */
 export function RsvpWord({ word, orpIndex }: RsvpWordProps) {
   const pivot = word ? Math.max(0, Math.min(orpIndex, word.length - 1)) : 0;
   const before = word.slice(0, pivot);
@@ -12,12 +16,16 @@ export function RsvpWord({ word, orpIndex }: RsvpWordProps) {
 
   return (
     <div
-      className="grid w-full grid-cols-[1fr_auto_1fr] items-baseline font-medium leading-none tracking-tight text-foreground"
-      style={{ fontSize: 'clamp(1.35rem, 8vw, 4.75rem)' }}
+      className="grid w-full items-baseline font-medium leading-none text-foreground"
+      style={{
+        gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+        fontSize: 'clamp(1.35rem, 8vw, 4.75rem)',
+        letterSpacing: '0px',
+        fontKerning: 'none',
+        fontVariantLigatures: 'none',
+      }}
     >
-      <span className="overflow-hidden text-right whitespace-pre">{before}</span>
-      <span className="text-primary">{letter}</span>
-      <span className="overflow-hidden text-left whitespace-pre">{after}</span>
+      <span className="block min-w-0 text-right">{before}</span><span className="block text-center text-primary" style={{ paddingInline: '0.045em' }}>{letter}</span><span className="block min-w-0 text-left">{after}</span>
     </div>
   );
 }

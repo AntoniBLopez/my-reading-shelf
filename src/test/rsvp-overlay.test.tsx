@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RsvpOverlay } from '@/components/rsvp/RsvpOverlay';
+import { RsvpWord } from '@/components/rsvp/RsvpWord';
 
 async function flushLoad() {
   await act(async () => {
@@ -8,6 +9,18 @@ async function flushLoad() {
     await Promise.resolve();
   });
 }
+
+describe('RsvpWord', () => {
+  it('renders the pivot pieces with no gap between them', () => {
+    const { container } = render(<RsvpWord word="dimension" orpIndex={2} />);
+    const grid = container.firstElementChild;
+    expect(grid).not.toBeNull();
+    const stray = [...grid!.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE);
+    expect(stray).toEqual([]);
+    expect(grid!.textContent).toBe('dimension');
+    expect([...grid!.children].map((node) => node.textContent)).toEqual(['di', 'm', 'ension']);
+  });
+});
 
 describe('RsvpOverlay', () => {
   beforeEach(() => {

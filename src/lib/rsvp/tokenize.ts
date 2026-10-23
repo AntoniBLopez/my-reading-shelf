@@ -26,13 +26,31 @@ export function orpIndex(word: string): number {
   return Math.min(word.length - 1, leading + pivot);
 }
 
-export function tokenize(text: string): RsvpToken[] {
+function stripInvisibles(text: string): string {
   return text
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => ({
+    .replace(/\u00AD/g, '')
+    .replace(/\u200B/g, '')
+    .replace(/\u200C/g, '')
+    .replace(/\u200D/g, '')
+    .replace(/\uFEFF/g, '');
+}
+
+/** Drop soft hyphens and zero-width characters, then trim. Empty results are discarded. */
+export function cleanToken(raw: string): string {
+  return stripInvisibles(raw).replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+export function tokenize(text: string): RsvpToken[] {
+  const normalized = stripInvisibles(text).replace(/\u00A0/g, ' ');
+  const tokens: RsvpToken[] = [];
+  for (const raw of normalized.split(/\s+/)) {
+    const word = cleanToken(raw);
+    if (!word) continue;
+    tokens.push({
       word,
       orpIndex: orpIndex(word),
       delayFactor: delayFactor(word),
-    }));
+    });
+  }
+  return tokens;
 }

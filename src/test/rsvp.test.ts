@@ -63,6 +63,67 @@ describe('rsvp tokenizer and timing', () => {
     expect(text).toBe('La lectura rápida sigue.');
   });
 
+  it('joins a hyphen glued to a word at a line break and keeps a mid-line hyphen', () => {
+    const line = (str: string, x: number, y: number, width: number, hasEOL = false) => ({
+      str,
+      hasEOL,
+      width,
+      height: 12,
+      transform: [12, 0, 0, 12, x, y],
+    });
+
+    expect(textItemsToPageText([
+      line('sys-', 40, 700, 36, true),
+      line('tems', 40, 684, 40),
+    ])).toBe('systems');
+
+    expect(textItemsToPageText([
+      line('sys-', 40, 700, 36),
+      line('tems', 40, 680, 40),
+    ])).toBe('systems');
+
+    expect(textItemsToPageText([
+      line('sys', 40, 700, 28),
+      line('-', 68, 700, 8, true),
+      line('tems', 40, 684, 40),
+    ])).toBe('systems');
+
+    expect(textItemsToPageText([
+      line('a well-', 40, 700, 50),
+      line('known', 92, 700, 48),
+      line('pair', 160, 700, 30),
+    ])).toBe('a well-known pair');
+
+    expect(textItemsToPageText([
+      { str: 'sys -', hasEOL: true },
+      { str: 'tems', hasEOL: false },
+    ])).toBe('sys - tems');
+  });
+
+  it('concatenates text runs that are only split by font or kerning', () => {
+    const run = (str: string, x: number, width: number) => ({
+      str,
+      hasEOL: false,
+      width,
+      height: 10,
+      transform: [10, 0, 0, 10, x, 500],
+    });
+
+    expect(textItemsToPageText([run('cri', 10, 18), run('teria', 28, 30)])).toBe('criteria');
+    expect(textItemsToPageText([run('cri ', 10, 20), run('teria', 30, 30)])).toBe('criteria');
+    expect(textItemsToPageText([run('not', 10, 20), run('ice', 30, 18)])).toBe('notice');
+    expect(textItemsToPageText([run('al', 10, 12), run('l', 22, 6)])).toBe('all');
+    expect(textItemsToPageText([run('it', 10, 10), run('of', 28, 12)])).toBe('it of');
+  });
+
+  it('trims tokens and drops soft hyphens, zero-width characters, and blanks', () => {
+    const tokens = tokenize('  it\u00A0 of \u200B cri\u00ADteria \u00AD  ');
+    expect(tokens.map((token) => token.word)).toEqual(['it', 'of', 'criteria']);
+    expect(tokens[0].orpIndex).toBe(1);
+    expect(tokens[1].orpIndex).toBe(1);
+    expect(tokenize(' \u00AD \u200B ').map((token) => token.word)).toEqual([]);
+  });
+
   it('reads the text layer the page rendered', () => {
     const root = document.createElement('div');
     root.innerHTML = `
