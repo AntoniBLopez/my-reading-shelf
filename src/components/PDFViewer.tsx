@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PDFPageStage, PDFPageStageHandle } from '@/components/PDFPageStage';
+import { RsvpLaunchButton, RsvpOverlay } from '@/components/rsvp/RsvpOverlay';
+import { readReaderPageText, type ReadablePdf } from '@/lib/rsvp/pageText';
 import 'react-pdf/src/Page/AnnotationLayer.css';
 import 'react-pdf/src/Page/TextLayer.css';
 
@@ -172,6 +174,10 @@ function PDFViewerComponent({
   const scaleTouchedRef = useRef(false);
   const autoFullscreenScaleRef = useRef(false);
   const stageRef = useRef<PDFPageStageHandle>(null);
+  const pdfDocRef = useRef<ReadablePdf | null>(null);
+  const [rsvpOpen, setRsvpOpen] = useState(false);
+  const rsvpOpenRef = useRef(false);
+  rsvpOpenRef.current = rsvpOpen;
 
   const isAtBaseZoom = fingerZoom <= 1 + BASE_ZOOM_TOLERANCE;
   isAtBaseZoomRef.current = isAtBaseZoom;
@@ -425,6 +431,14 @@ function PDFViewerComponent({
     setReloadAttempt((prev) => prev + 1);
   }, []);
 
+  useEffect(() => {
+    pdfDocRef.current = null;
+  }, [pdfUrl]);
+
+  useEffect(() => {
+    if (!isOpen) setRsvpOpen(false);
+  }, [isOpen]);
+
   // Restore last read position only when dialog opens (not on every book.current_page update, to avoid jump when user clicks next/prev)
   useEffect(() => {
     if (!isOpen) return;
@@ -440,7 +454,9 @@ function PDFViewerComponent({
     setPageInputValue(String(pageNumber));
   }, [pageNumber]);
 
-  const onDocumentLoadSuccess = useCallback(({ numPages: total }: { numPages: number }) => {
+  const onDocumentLoadSuccess = useCallback((pdf: ReadablePdf) => {
+    pdfDocRef.current = pdf;
+    const total = pdf.numPages;
     setNumPages(total);
     setLoading(false);
 
@@ -751,6 +767,7 @@ function PDFViewerComponent({
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (rsvpOpenRef.current) return;
       const target = e.target as HTMLElement;
       if (target.closest('input') || target.closest('textarea') || target.isContentEditable) return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
@@ -811,6 +828,10 @@ function PDFViewerComponent({
         doubleTapTimeoutRef.current = null;
       }
     };
+  }, []);
+
+  const loadPageText = useCallback((page: number) => {
+    return readReaderPageText(pdfDocRef.current, page, pinchContentRef.current);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -901,6 +922,9 @@ function PDFViewerComponent({
             : 'max-w-4xl h-[90vh]'
         )}
         hideCloseButton
+        onEscapeKeyDown={(event) => {
+          if (rsvpOpenRef.current) event.preventDefault();
+        }}
       >
         {!isFullscreen && (
         <DialogHeader className="px-4 py-3 border-b bg-muted/50">
@@ -985,6 +1009,10 @@ function PDFViewerComponent({
 
             {/* Fullscreen, theme, zoom — wraps on very narrow screens */}
             <div className="flex flex-wrap items-center gap-1 sm:gap-2 min-w-0 shrink-0 justify-end">
+              <RsvpLaunchButton
+                disabled={!pdfUrl || loading || !!error}
+                onClick={() => setRsvpOpen(true)}
+              />
               <Button
                 variant="outline"
                 size="icon"
@@ -1126,6 +1154,15 @@ function PDFViewerComponent({
             <span>Te quedan {numPages - pageNumber} páginas</span>
           )}
         </div>
+        )}
+        {rsvpOpen && (
+          <RsvpOverlay
+            pageNumber={pageNumber}
+            hasNextPage={numPages > 0 && pageNumber < numPages}
+            loadPageText={loadPageText}
+            onNextPage={() => goToPage(pageNumber + 1)}
+            onClose={() => setRsvpOpen(false)}
+          />
         )}
       </DialogContent>
     </Dialog>
