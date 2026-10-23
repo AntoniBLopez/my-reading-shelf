@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { LastUsedSignInCaption, LastUsedSignInControl } from '@/components/auth/LastUsedSignInMarker';
 import { useAuth } from '@/hooks/useAuth';
+import { useLastSignInMethod } from '@/hooks/useLastSignInMethod';
 import { toast } from 'sonner';
 import { BookOpen, Mail, Lock, Loader2 } from 'lucide-react';
 
@@ -36,6 +38,8 @@ export function AuthForm() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn, signUp, resetPassword } = useAuth();
+  const { lastSignInMethod, rememberSignInMethod } = useLastSignInMethod();
+  const showEmailMarker = isLogin && !forgotPassword && lastSignInMethod === 'email';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +73,7 @@ export function AuthForm() {
         if (error) {
           toast.error(error.message);
         } else {
+          rememberSignInMethod('email');
           toast.success('¡Bienvenido de vuelta!');
         }
       } else {
@@ -109,17 +114,21 @@ export function AuthForm() {
                 Email
               </Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="tu@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
-                  required
-                />
+                <Mail className="absolute left-3 top-1/2 z-10 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <LastUsedSignInControl active={showEmailMarker}>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="tu@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="pl-10"
+                    required
+                    aria-describedby={showEmailMarker ? 'last-used-email-caption' : undefined}
+                  />
+                </LastUsedSignInControl>
               </div>
+              {showEmailMarker && <LastUsedSignInCaption id="last-used-email-caption" method="email" />}
             </div>
             {!forgotPassword && (
               <div className="space-y-2">
