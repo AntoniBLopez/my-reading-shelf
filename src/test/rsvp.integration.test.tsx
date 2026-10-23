@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { RsvpOverlay } from '@/components/rsvp/RsvpOverlay';
@@ -69,6 +69,7 @@ describe('GIVEN a PDF page with text', () => {
     );
     await flushLoad();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Reproducir lectura' }));
     const stage = screen.getByRole('button', { name: 'Pausar lectura' });
     expect(stage).toHaveTextContent('En');
     expect(stage).not.toHaveTextContent('pagina');

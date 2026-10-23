@@ -49,18 +49,19 @@ describe('RsvpOverlay', () => {
     );
     await flushLoad();
 
-    const stage = screen.getByRole('button', { name: 'Pausar lectura' });
-    const pivot = stage.querySelector('.text-primary');
-    expect(pivot).toHaveTextContent('o');
+    const stage = screen.getByRole('button', { name: 'Reproducir lectura' });
+    expect(stage.querySelector('.text-primary')).toHaveTextContent('o');
     expect(screen.getByText('Pág. 3')).toBeInTheDocument();
 
     fireEvent.click(stage);
+    const playing = screen.getByRole('button', { name: 'Pausar lectura' });
+    fireEvent.click(playing);
     expect(screen.getByRole('button', { name: 'Reproducir lectura' })).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(stage.querySelector('.text-primary')).toHaveTextContent('o');
+    expect(screen.getByRole('button', { name: 'Reproducir lectura' }).querySelector('.text-primary')).toHaveTextContent('o');
   });
 
   it('stops at the end of the page and continues on the next one', async () => {
@@ -76,6 +77,7 @@ describe('RsvpOverlay', () => {
       />,
     );
     await flushLoad();
+    fireEvent.click(screen.getByRole('button', { name: 'Reproducir lectura' }));
 
     act(() => {
       vi.advanceTimersByTime(200);
@@ -98,7 +100,7 @@ describe('RsvpOverlay', () => {
     );
     await flushLoad();
     expect(screen.getByText('Pág. 2')).toBeInTheDocument();
-    const stage = screen.getByRole('button', { name: 'Pausar lectura' });
+    const stage = screen.getByRole('button', { name: 'Reproducir lectura' });
     expect(stage).toHaveTextContent('sigue');
   });
 

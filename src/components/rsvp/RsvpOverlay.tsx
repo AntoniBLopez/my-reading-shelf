@@ -3,6 +3,8 @@ import { Loader2, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { RsvpPlayer } from '@/components/rsvp/RsvpPlayer';
+import { attachFigureCues } from '@/lib/rsvp/figures/references';
+import type { FigureCue, FigureImage } from '@/lib/rsvp/figures/types';
 import { tokenize } from '@/lib/rsvp/tokenize';
 
 interface RsvpOverlayProps {
@@ -11,6 +13,9 @@ interface RsvpOverlayProps {
   loadPageText: (pageNumber: number) => Promise<string>;
   onNextPage: () => void;
   onClose: () => void;
+  resolveFigure?: (cue: FigureCue, pageNumber: number) => Promise<FigureImage | null>;
+  listOrphans?: (pageNumber: number, mentioned: ReadonlySet<string>) => Promise<FigureCue[]>;
+  prefetchFigures?: (pageNumber: number) => void;
 }
 
 type LoadState =
@@ -39,7 +44,16 @@ export function RsvpLaunchButton({ disabled, onClick }: { disabled?: boolean; on
   );
 }
 
-export function RsvpOverlay({ pageNumber, hasNextPage, loadPageText, onNextPage, onClose }: RsvpOverlayProps) {
+export function RsvpOverlay({
+  pageNumber,
+  hasNextPage,
+  loadPageText,
+  onNextPage,
+  onClose,
+  resolveFigure,
+  listOrphans,
+  prefetchFigures,
+}: RsvpOverlayProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
 
   useEffect(() => {
@@ -70,7 +84,7 @@ export function RsvpOverlay({ pageNumber, hasNextPage, loadPageText, onNextPage,
   }, [onClose]);
 
   const pageText = state.status === 'ready' ? state.text : '';
-  const tokens = useMemo(() => (pageText ? tokenize(pageText) : []), [pageText]);
+  const tokens = useMemo(() => (pageText ? attachFigureCues(tokenize(pageText)) : []), [pageText]);
 
   return (
     <div
@@ -121,9 +135,12 @@ export function RsvpOverlay({ pageNumber, hasNextPage, loadPageText, onNextPage,
         <RsvpPlayer
           key={pageNumber}
           tokens={tokens}
-          autoPlay
+          pageNumber={pageNumber}
           hasNextPage={hasNextPage}
           onNextPage={onNextPage}
+          resolveFigure={resolveFigure}
+          listOrphans={listOrphans}
+          prefetchFigures={prefetchFigures}
         />
       )}
     </div>

@@ -1,28 +1,61 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
+import { RsvpFigure } from '@/components/rsvp/RsvpFigure';
 import { RsvpWord } from '@/components/rsvp/RsvpWord';
 import { useRsvp } from '@/hooks/useRsvp';
+import { useRsvpFigures, type FigureResolver } from '@/hooks/useRsvpFigures';
 import type { RsvpToken } from '@/lib/rsvp/tokenize';
 import { RSVP_MAX_WPM, RSVP_MIN_WPM } from '@/lib/rsvp/wpm';
 
-interface RsvpPlayerProps {
+interface RsvpPlayerProps extends FigureResolver {
   tokens: RsvpToken[];
   autoPlay?: boolean;
+  pageNumber?: number;
   hasNextPage: boolean;
   onNextPage: () => void;
+  prefetchFigures?: (pageNumber: number) => void;
 }
 
-export function RsvpPlayer({ tokens, autoPlay, hasNextPage, onNextPage }: RsvpPlayerProps) {
-  const rsvp = useRsvp(tokens, { autoPlay });
-  const { toggle, step } = rsvp;
+export function RsvpPlayer({
+  tokens,
+  autoPlay,
+  pageNumber = 1,
+  hasNextPage,
+  onNextPage,
+  resolveFigure,
+  listOrphans,
+  prefetchFigures,
+}: RsvpPlayerProps) {
+  const figures = useRsvpFigures(tokens, pageNumber, {
+    resolveFigure,
+    listOrphans,
+    prefetch: prefetchFigures,
+  });
+  const rsvp = useRsvp(tokens, { autoPlay, beforeAdvance: figures.beforeAdvance });
+  const { toggle, step, index, total } = rsvp;
+  const { figure, continueReading, dismiss } = figures;
+
+  const resume = useCallback(
+    () => continueReading({ index, total, step, play: rsvp.play }),
+    [continueReading, index, total, step, rsvp.play],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
       const onSlider = !!target?.closest('[role="slider"]');
+      if (figure) {
+        if (target?.closest('button')) return;
+        if (event.key === ' ' || event.code === 'Space' || event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          event.stopPropagation();
+          resume();
+        }
+        return;
+      }
       if (event.key === ' ' || event.code === 'Space') {
         if (target?.closest('button') && !target.closest('[data-rsvp-stage]')) return;
         event.preventDefault();
@@ -46,7 +79,7 @@ export function RsvpPlayer({ tokens, autoPlay, hasNextPage, onNextPage }: RsvpPl
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [toggle, step]);
+  }, [figure, resume, toggle, step]);
 
   const word = rsvp.token?.word ?? '';
 
@@ -59,22 +92,26 @@ export function RsvpPlayer({ tokens, autoPlay, hasNextPage, onNextPage }: RsvpPl
         </p>
       </div>
 
-      <div
-        data-rsvp-stage
-        role="button"
-        tabIndex={0}
-        className="flex flex-1 cursor-pointer select-none items-center justify-center px-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={rsvp.toggle}
-        aria-label={rsvp.playing ? 'Pausar lectura' : 'Reproducir lectura'}
-      >
-        <div className="w-full max-w-3xl">
-          <div className="mx-auto mb-3 h-4 w-px bg-primary" aria-hidden />
-          <RsvpWord word={word} orpIndex={rsvp.token?.orpIndex ?? 0} />
-          <div className="mx-auto mt-3 h-4 w-px bg-primary/40" aria-hidden />
+      {figure ? (
+        <RsvpFigure cue={figure} image={figures.image} searching={figures.searching} onContinue={resume} />
+      ) : (
+        <div
+          data-rsvp-stage
+          role="button"
+          tabIndex={0}
+          className="flex flex-1 cursor-pointer select-none items-center justify-center px-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={toggle}
+          aria-label={rsvp.playing ? 'Pausar lectura' : 'Reproducir lectura'}
+        >
+          <div className="w-full max-w-3xl">
+            <div className="mx-auto mb-3 h-4 w-px bg-primary" aria-hidden />
+            <RsvpWord word={word} orpIndex={rsvp.token?.orpIndex ?? 0} />
+            <div className="mx-auto mt-3 h-4 w-px bg-primary/40" aria-hidden />
+          </div>
         </div>
-      </div>
+      )}
 
-      {rsvp.finished && (
+      {rsvp.finished && !figure && (
         <div className="px-4 pb-2 text-center">
           <p className="mb-3 text-sm font-medium">Fin de la página</p>
           {hasNextPage ? (
@@ -92,7 +129,10 @@ export function RsvpPlayer({ tokens, autoPlay, hasNextPage, onNextPage }: RsvpPl
               variant="outline"
               size="icon"
               className="h-11 w-11"
-              onClick={rsvp.restart}
+              onClick={() => {
+                dismiss();
+                rsvp.restart();
+              }}
               aria-label="Reiniciar"
               title="Reiniciar"
             >
@@ -102,7 +142,10 @@ export function RsvpPlayer({ tokens, autoPlay, hasNextPage, onNextPage }: RsvpPl
               variant="outline"
               size="icon"
               className="h-11 w-11"
-              onClick={() => rsvp.step(-1)}
+              onClick={() => {
+                dismiss();
+                rsvp.step(-1);
+              }}
               aria-label="Palabra anterior"
               title="Palabra anterior"
             >
@@ -111,7 +154,7 @@ export function RsvpPlayer({ tokens, autoPlay, hasNextPage, onNextPage }: RsvpPl
             <Button
               size="icon"
               className="h-11 w-11"
-              onClick={rsvp.toggle}
+              onClick={() => (figure ? resume() : toggle())}
               aria-label={rsvp.playing ? 'Pausar' : 'Reproducir'}
               title={rsvp.playing ? 'Pausar' : 'Reproducir'}
             >
@@ -121,7 +164,10 @@ export function RsvpPlayer({ tokens, autoPlay, hasNextPage, onNextPage }: RsvpPl
               variant="outline"
               size="icon"
               className="h-11 w-11"
-              onClick={() => rsvp.step(1)}
+              onClick={() => {
+                dismiss();
+                rsvp.step(1);
+              }}
               aria-label="Palabra siguiente"
               title="Palabra siguiente"
             >
