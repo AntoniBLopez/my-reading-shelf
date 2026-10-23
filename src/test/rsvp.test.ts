@@ -124,6 +124,32 @@ describe('rsvp tokenizer and timing', () => {
     expect(tokenize(' \u00AD \u200B ').map((token) => token.word)).toEqual([]);
   });
 
+  it('should read pdf.js 6 items whose text matrix is a typed array', () => {
+    const matrix = new Float32Array([12, 0, 0, 12, 40, 700]);
+    expect(textItemsToPageText([
+      { str: 'En esta ', width: 48, height: 12, transform: matrix, hasEOL: false },
+      { str: ['pá', 'gina'], width: 40, height: 12, transform: new Float32Array([12, 0, 0, 12, 100, 700]), hasEOL: true },
+    ])).toBe('En esta página');
+  });
+
+  it('should read words inside a pdf.js 6 marked-content text layer', () => {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <div class="pdf-turn-leaf">
+        <div class="react-pdf__Page__textContent textLayer">
+          <span class="markedContent">
+            <span role="presentation">En esta </span>
+            <span role="presentation">página </span>
+            <br role="presentation"></br>
+            <span role="presentation">hay texto.</span>
+          </span>
+          <div class="endOfContent">ignore</div>
+        </div>
+      </div>
+    `;
+    expect(extractRenderedPageText(root)).toBe('En esta página hay texto.');
+  });
+
   it('reads the text layer the page rendered', () => {
     const root = document.createElement('div');
     root.innerHTML = `
