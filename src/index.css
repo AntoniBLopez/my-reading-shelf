@@ -121,6 +121,16 @@
     @apply border-border;
   }
 
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
   }
@@ -159,52 +169,35 @@
   }
 }
 
-/* Bottom nav (mobile/tablet): no hover/focus persistente en touch; hover solo en desktop */
-.bottom-nav button {
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+/* Ink ripple shared by every button. currentColor tracks light and dark text. */
+.tap-ripple {
+  position: absolute;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.22;
+  transform: scale(0);
+  pointer-events: none;
+  animation: tap-ripple 560ms ease-out forwards;
 }
-/* En touch: quitar cualquier bg/focus que quede pegado al pulsar (hay que pulsar fuera para quitar) */
-@media (hover: none) {
-  .bottom-nav button:hover:not(.bg-primary\/10),
-  .bottom-nav button:focus:not(.bg-primary\/10),
-  .bottom-nav button:focus-visible:not(.bg-primary\/10) {
-    background-color: transparent !important;
-    box-shadow: none !important;
-    outline: none !important;
-  }
+
+.tap-ripple--reduced {
+  animation: none;
+  transform: scale(0.9);
+  opacity: 0.16;
 }
-@keyframes bottom-nav-ripple {
-  from {
-    transform: scale(0);
-    opacity: 0.25;
-  }
+
+@keyframes tap-ripple {
   to {
-    transform: scale(4);
+    transform: scale(1);
     opacity: 0;
   }
 }
-.bottom-nav-ripple {
-  position: absolute;
-  width: 100px;
-  height: 100px;
-  margin-left: -50px;
-  margin-top: -50px;
-  border-radius: 50%;
-  background: currentColor;
-  pointer-events: none;
-  animation: bottom-nav-ripple 0.6s ease-out forwards;
-}
 
-/* Mostrar más / Minimizar: ripple en táctil y sin hover en tablet/mobile (solo hover con mouse) */
-.expand-more-btn {
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-@media (hover: none) {
-  .expand-more-btn:hover {
-    background-color: transparent !important;
-    color: hsl(var(--muted-foreground)) !important;
+@media (prefers-reduced-motion: reduce) {
+  .tap-ripple {
+    animation: none;
+    transform: scale(0.9);
+    opacity: 0.16;
   }
 }
 
