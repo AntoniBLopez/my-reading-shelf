@@ -364,3 +364,42 @@
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
+
+/* Last sign-in method: brand color on the sides only, transparent top and bottom, soft side glow. */
+.last-used-sign-in {
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  border-left-color: hsl(var(--primary));
+  border-right-color: hsl(var(--primary));
+  border-left-width: 2px;
+  border-right-width: 2px;
+}
+
+.last-used-sign-in-glow::before,
+.last-used-sign-in-glow::after {
+  content: "";
+  position: absolute;
+  top: 10%;
+  bottom: 10%;
+  width: 2px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.last-used-sign-in-glow::before {
+  left: 0;
+  box-shadow: -7px 0 14px 0 hsl(var(--primary) / 0.45);
+}
+
+.last-used-sign-in-glow::after {
+  right: 0;
+  box-shadow: 7px 0 14px 0 hsl(var(--primary) / 0.45);
+}
+
+.dark .last-used-sign-in-glow::before {
+  box-shadow: -7px 0 16px 0 hsl(var(--primary) / 0.62);
+}
+
+.dark .last-used-sign-in-glow::after {
+  box-shadow: 7px 0 16px 0 hsl(var(--primary) / 0.62);
+}
