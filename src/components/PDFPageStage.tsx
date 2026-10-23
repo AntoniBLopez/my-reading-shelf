@@ -3,7 +3,9 @@ import { useTheme } from 'next-themes';
 import { Document, Page, pdfjs } from 'react-pdf';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { cn } from '@/lib/utils';
+import { useCoarsePointer } from '@/hooks/useCoarsePointer';
 import { usePageSwipe } from '@/hooks/usePageSwipe';
+import { pageDevicePixelRatio } from '@/lib/pageCanvasScale';
 import type { TurnDirection } from '@/lib/pageTurnGesture';
 import type { ReadablePdf } from '@/lib/rsvp/pageText';
 import 'react-pdf/src/Page/AnnotationLayer.css';
@@ -42,8 +44,6 @@ function slotsFor(page: number) {
     leaf: page,
     next: page + 1,
     prev: page - 1,
-    ahead: page + 2,
-    behind: page - 2,
   };
 }
 
@@ -61,6 +61,10 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const file = useMemo(() => props.pdfUrl, [props.pdfUrl]);
   const { resolvedTheme } = useTheme();
   const themeKey = resolvedTheme === 'dark' ? 'dark' : 'light';
+  const touchPrimary = useCoarsePointer();
+  const pixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+  const leafPixelRatio = pageDevicePixelRatio(pixelRatio, touchPrimary, 'leaf');
+  const neighborPixelRatio = pageDevicePixelRatio(pixelRatio, touchPrimary, 'neighbor');
 
   const commitPage = (page: number) => {
     const dir: TurnDirection = page >= slotsRef.current.leaf ? 'next' : 'prev';
@@ -68,8 +72,6 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       leaf: page,
       next: dir === 'next' ? page : page + 1,
       prev: dir === 'prev' ? page : page - 1,
-      ahead: page + 2,
-      behind: page - 2,
     });
     props.onCommit(page);
   };
@@ -95,9 +97,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
       if (
         current.leaf === next.leaf &&
         current.next === next.next &&
-        current.prev === next.prev &&
-        current.ahead === next.ahead &&
-        current.behind === next.behind
+        current.prev === next.prev
       ) {
         return current;
       }
@@ -156,29 +156,20 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
           className={cn('pdf-turn-scene', props.panFree && 'pdf-turn-scene--free')}
           onPointerDown={onPointerDown}
         >
-          {inBook(slots.behind) && (
-            <div className="pdf-turn-under" aria-hidden>
-              <Page {...pageProps} key={`${themeKey}-${slots.behind}`} pageNumber={slots.behind} renderTextLayer={false} renderAnnotationLayer={false} />
-            </div>
-          )}
           {inBook(slots.prev) && (
             <div className="pdf-turn-under pdf-turn-under--prev" aria-hidden>
-              <Page {...pageProps} key={`${themeKey}-${slots.prev}`} pageNumber={slots.prev} renderTextLayer={false} renderAnnotationLayer={false} />
+              <Page {...pageProps} devicePixelRatio={neighborPixelRatio} key={`${themeKey}-${slots.prev}`} pageNumber={slots.prev} renderTextLayer={false} renderAnnotationLayer={false} />
             </div>
           )}
           {inBook(slots.next) && (
             <div className="pdf-turn-under pdf-turn-under--next" aria-hidden>
-              <Page {...pageProps} key={`${themeKey}-${slots.next}`} pageNumber={slots.next} renderTextLayer={false} renderAnnotationLayer={false} />
-            </div>
-          )}
-          {inBook(slots.ahead) && (
-            <div className="pdf-turn-under" aria-hidden>
-              <Page {...pageProps} key={`${themeKey}-${slots.ahead}`} pageNumber={slots.ahead} renderTextLayer={false} renderAnnotationLayer={false} />
+              <Page {...pageProps} devicePixelRatio={neighborPixelRatio} key={`${themeKey}-${slots.next}`} pageNumber={slots.next} renderTextLayer={false} renderAnnotationLayer={false} />
             </div>
           )}
           <div ref={leafRef} className="pdf-turn-leaf">
             <Page
               {...pageProps}
+              devicePixelRatio={leafPixelRatio}
               key={`${themeKey}-${slots.leaf}`}
               pageNumber={slots.leaf}
               renderTextLayer

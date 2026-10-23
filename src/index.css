@@ -280,6 +280,12 @@
   touch-action: pan-y;
 }
 
+.pdf-turn-scene canvas,
+.pdf-turn-leaf,
+.pdf-turn-under {
+  touch-action: pan-y;
+}
+
 .pdf-turn-scene--free {
   touch-action: none;
 }
@@ -340,6 +346,19 @@
 .pdf-turn-leaf--glide {
   will-change: transform;
   transition: transform 160ms cubic-bezier(0.2, 0.85, 0.2, 1);
+}
+
+/* Text and annotation spans are not needed while the bitmap is sliding. */
+.pdf-turn-leaf--follow .react-pdf__Page__textContent,
+.pdf-turn-leaf--follow .react-pdf__Page__annotations,
+.pdf-turn-leaf--glide .react-pdf__Page__textContent,
+.pdf-turn-leaf--glide .react-pdf__Page__annotations {
+  visibility: hidden;
+}
+
+.pdf-viewer-pdf-wrapper:has(.pdf-turn-leaf--follow) .shadow-lg,
+.pdf-viewer-pdf-wrapper:has(.pdf-turn-leaf--glide) .shadow-lg {
+  box-shadow: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

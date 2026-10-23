@@ -37,6 +37,11 @@ type UsePageSwipeArgs = {
   onActive?: (active: boolean) => void;
 };
 
+type PendingPaint = {
+  x: number;
+  dir: TurnDirection | null;
+};
+
 const SETTLE_FALLBACK_MS = 480;
 
 function prefersReducedMotion() {
@@ -62,6 +67,15 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   const pendingTargetRef = useRef<number | null>(null);
   const glideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef(0);
+  const pendingPaintRef = useRef<PendingPaint | null>(null);
+  const touchArmedRef = useRef(false);
+  const paintModeRef = useRef<'follow' | 'glide' | 'rest'>('rest');
+
+  const blockTouchRef = useRef((event: TouchEvent) => {
+    if (!gestureRef.current?.active || !event.cancelable) return;
+    event.preventDefault();
+  });
 
   const clearGlide = () => {
     if (glideTimerRef.current != null) {
@@ -77,11 +91,20 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     }
   };
 
+  const cancelFollow = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = 0;
+    pendingPaintRef.current = null;
+  };
+
   const paint = (x: number, mode: 'follow' | 'glide' | 'rest') => {
     const leaf = leafRef.current;
     if (!leaf) return;
-    leaf.classList.toggle('pdf-turn-leaf--follow', mode === 'follow');
-    leaf.classList.toggle('pdf-turn-leaf--glide', mode === 'glide');
+    if (paintModeRef.current !== mode) {
+      paintModeRef.current = mode;
+      leaf.classList.toggle('pdf-turn-leaf--follow', mode === 'follow');
+      leaf.classList.toggle('pdf-turn-leaf--glide', mode === 'glide');
+    }
     leaf.style.transform = mode === 'rest' ? '' : `translate3d(${x}px,0,0)`;
   };
 
@@ -90,6 +113,35 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     if (!scene) return;
     if (dir) scene.dataset.turn = dir;
     else delete scene.dataset.turn;
+  };
+
+  const drawFollow = () => {
+    rafRef.current = 0;
+    const pending = pendingPaintRef.current;
+    if (!pending) return;
+    pendingPaintRef.current = null;
+    setTurn(pending.dir);
+    paint(pending.x, 'follow');
+  };
+
+  const scheduleFollow = (x: number, dir: TurnDirection | null) => {
+    pendingPaintRef.current = { x, dir };
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(drawFollow);
+  };
+
+  const disarmTouch = () => {
+    const scene = sceneRef.current;
+    if (!scene || !touchArmedRef.current) return;
+    scene.removeEventListener('touchmove', blockTouchRef.current);
+    touchArmedRef.current = false;
+  };
+
+  const armTouch = () => {
+    const scene = sceneRef.current;
+    if (!scene || touchArmedRef.current) return;
+    scene.addEventListener('touchmove', blockTouchRef.current, { passive: false });
+    touchArmedRef.current = true;
   };
 
   const notifyActive = (active: boolean) => {
@@ -147,6 +199,8 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   };
 
   const resetSheet = () => {
+    cancelFollow();
+    disarmTouch();
     clearGlide();
     clearSettle();
     pendingTargetRef.current = null;
@@ -160,6 +214,8 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   const releaseGesture = () => {
     const gesture = gestureRef.current;
     gestureRef.current = null;
+    cancelFollow();
+    disarmTouch();
     if (!gesture?.active || !gesture.dir) {
       resetSheet();
       return;
@@ -177,7 +233,6 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   };
 
   useEffect(() => {
-    const scene = sceneRef.current;
     const onMove = (event: PointerEvent) => {
       const gesture = gestureRef.current;
       if (!gesture || event.pointerId !== gesture.pointerId || lockRef.current) return;
@@ -197,9 +252,8 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
         if (phase !== 'horizontal') return;
         gesture.active = true;
         gesture.dir = directionFromDx(dx);
-        gesture.width = Math.max(1, leafRef.current?.getBoundingClientRect().width || gesture.width);
         notifyActive(true);
-        setTurn(isEdgeBlocked(gesture.dir, pageRef.current, pageCountRef.current) ? null : gesture.dir);
+        armTouch();
       }
       if (!gesture.dir) return;
       const now = performance.now();
@@ -208,7 +262,7 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       gesture.lastY = event.clientY;
       gesture.lastT = now;
       const blocked = isEdgeBlocked(gesture.dir, pageRef.current, pageCountRef.current);
-      paint(leafOffsetPx(dx, gesture.width, gesture.dir, blocked), 'follow');
+      scheduleFollow(leafOffsetPx(dx, gesture.width, gesture.dir, blocked), blocked ? null : gesture.dir);
     };
     const onUp = (event: PointerEvent) => {
       pointersRef.current.delete(event.pointerId);
@@ -216,21 +270,17 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       if (!gesture || event.pointerId !== gesture.pointerId) return;
       releaseGesture();
     };
-    const onTouchMove = (event: TouchEvent) => {
-      if (!gestureRef.current?.active || !event.cancelable) return;
-      event.preventDefault();
-    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
-    scene?.addEventListener('touchmove', onTouchMove, { passive: false });
     return () => {
+      cancelFollow();
+      disarmTouch();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
-      scene?.removeEventListener('touchmove', onTouchMove);
     };
-    // The scene node stays mounted for the life of the reader.
+    // Listeners read the latest page through refs. The scene node stays mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -121,11 +121,29 @@ function Reader({
 }
 
 describe('page turn drag', () => {
+  let frames: FrameRequestCallback[] = [];
+
+  function flushFrames() {
+    const batch = frames.splice(0, frames.length);
+    act(() => {
+      for (const frame of batch) frame(performance.now());
+    });
+  }
+
   beforeEach(() => {
+    frames = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+      if (frames[id - 1]) frames[id - 1] = () => {};
+    });
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect);
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -143,6 +161,7 @@ describe('page turn drag', () => {
 
     pointer('pointerdown', scene, { clientX: 200, clientY: 80 });
     pointer('pointermove', window, { clientX: 40, clientY: 84 });
+    flushFrames();
 
     expect(leaf().style.transform).toBe('translate3d(-160px,0,0)');
     expect(leaf().classList.contains('pdf-turn-leaf--follow')).toBe(true);
@@ -201,6 +220,7 @@ describe('page turn drag', () => {
 
     pointer('pointerdown', scene, { clientX: 40, clientY: 80 });
     pointer('pointermove', window, { clientX: 200, clientY: 80 });
+    flushFrames();
     const offset = Number.parseFloat(leaf().style.transform.match(/translate3d\(([-\d.]+)px/)?.[1] ?? '0');
     expect(Math.abs(offset)).toBeLessThan(50);
     expect(scene.hasAttribute('data-turn')).toBe(false);
