@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, forwardRef, useRef, useTransition } from 'react';
+import { useState, useEffect, useCallback, useRef, useTransition } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Dashboard } from './Dashboard';
@@ -19,38 +19,6 @@ import { Loader2, LayoutDashboard, Library as LibraryIcon, Menu, User, Sun, Moon
 import { cn } from '@/lib/utils';
 
 type View = 'dashboard' | 'library';
-
-const BottomNavButton = forwardRef<HTMLButtonElement, React.ComponentProps<typeof Button>>(
-  function BottomNavButton({ children, className, onPointerDown, ...props }, ref) {
-    const [ripple, setRipple] = useState<{ x: number; y: number } | null>(null);
-    const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-      const el = e.currentTarget;
-      if (el && (e.pointerType === 'touch' || e.pointerType === 'mouse')) {
-        const rect = el.getBoundingClientRect();
-        setRipple({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-        setTimeout(() => setRipple(null), 600);
-      }
-      onPointerDown?.(e);
-    };
-    return (
-      <Button
-        ref={ref}
-        variant="ghost"
-        className={cn('relative overflow-hidden', className)}
-        onPointerDown={handlePointerDown}
-        {...props}
-      >
-        {ripple && (
-          <span
-            className="bottom-nav-ripple"
-            style={{ left: ripple.x, top: ripple.y }}
-          />
-        )}
-        {children}
-      </Button>
-    );
-  }
-);
 
 function getViewFromSearchParams(): View {
   const params = new URLSearchParams(window.location.search);
@@ -230,7 +198,8 @@ export function MainLayout() {
         className="bottom-nav lg:hidden fixed bottom-0 left-0 right-0 z-50 flex items-stretch justify-around border-t border-border bg-background/95 backdrop-blur"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        <BottomNavButton
+        <Button
+          variant="ghost"
           className={cn(
             'flex flex-col items-center justify-center gap-0.5 py-0 px-4 rounded-none min-w-0 flex-1 min-h-[58px] text-muted-foreground',
             currentView === 'dashboard' && 'text-primary bg-primary/10'
@@ -239,8 +208,9 @@ export function MainLayout() {
         >
           <LayoutDashboard className="w-5 h-5 shrink-0" />
           <span className="text-xs">Inicio</span>
-        </BottomNavButton>
-        <BottomNavButton
+        </Button>
+        <Button
+          variant="ghost"
           className={cn(
             'flex flex-col items-center justify-center gap-0.5 py-0 px-4 rounded-none min-w-0 flex-1 min-h-[58px] text-muted-foreground',
             currentView === 'library' && 'text-primary bg-primary/10'
@@ -249,16 +219,17 @@ export function MainLayout() {
         >
           <LibraryIcon className="w-5 h-5 shrink-0" />
           <span className="text-xs">Biblioteca</span>
-        </BottomNavButton>
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <BottomNavButton
+            <Button
+              variant="ghost"
               className="flex flex-col items-center justify-center gap-0.5 py-0 px-4 rounded-none min-w-0 flex-1 min-h-[58px] text-muted-foreground"
               aria-label="Menú"
             >
               <Menu className="w-5 h-5 shrink-0" />
               <span className="text-xs">Menú</span>
-            </BottomNavButton>
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="center" className="mb-2 w-56">
             <DropdownMenuLabel className="font-normal">
