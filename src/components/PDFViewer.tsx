@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils';
 import { PDFPageStage, PDFPageStageHandle } from '@/components/PDFPageStage';
 import { RsvpLaunchButton, RsvpOverlay } from '@/components/rsvp/RsvpOverlay';
 import { usePdfFigures } from '@/hooks/usePdfFigures';
+import { useReaderChromeKeys } from '@/hooks/useReaderChromeKeys';
 import { useReaderPageText } from '@/hooks/useReaderPageText';
 import type { ReadablePdf } from '@/lib/rsvp/pageText';
 const MIN_SCALE = 0.1;
@@ -678,10 +679,15 @@ function PDFViewerComponent({
     [publishFingerZoom]
   );
 
-  /** Toggle barra en fullscreen (usado por doble toque en touch y doble clic en desktop) */
+  /** Same handler the center of the page uses to show or hide the fullscreen header. */
   const toggleFullscreenHeader = useCallback(() => {
     setFullscreenHeaderVisible(v => !v);
   }, []);
+  const toggleCenterHeader = useCallback(() => {
+    if (!isFullscreen) return;
+    toggleFullscreenHeader();
+  }, [isFullscreen, toggleFullscreenHeader]);
+  useReaderChromeKeys(isOpen && !rsvpOpen, toggleCenterHeader);
 
   /** Doble toque/clic: izquierda = página anterior, derecha = siguiente, centro (solo fullscreen) = toggle barra */
   const handleDoubleTapOrClick = useCallback(
@@ -696,11 +702,11 @@ function PDFViewerComponent({
         requestTurn('prev');
       } else if (rel > DOUBLE_TAP_RIGHT_ZONE) {
         requestTurn('next');
-      } else if (isFullscreen) {
-        toggleFullscreenHeader();
+      } else {
+        toggleCenterHeader();
       }
     },
-    [getCanTurn, requestTurn, isFullscreen, toggleFullscreenHeader]
+    [getCanTurn, requestTurn, toggleCenterHeader]
   );
 
   /**

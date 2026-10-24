@@ -2,7 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { useRsvp } from '@/hooks/useRsvp';
 import { extractRenderedPageText, textItemsToPageText } from '@/lib/rsvp/pageText';
-import { delayFactor, wordDelayMs } from '@/lib/rsvp/timing';
+import { delayFactor, endsSentence, wordDelayMs } from '@/lib/rsvp/timing';
 import { orpIndex, tokenize } from '@/lib/rsvp/tokenize';
 import { RSVP_WPM_STORAGE_KEY, clampWpm, readStoredWpm, storeWpm } from '@/lib/rsvp/wpm';
 
@@ -39,6 +39,11 @@ describe('rsvp tokenizer and timing', () => {
     expect(delayFactor('biblioteca')).toBe(1.25);
     expect(delayFactor('extraordinario')).toBe(1.4);
     expect(delayFactor('biblioteca.')).toBe(2);
+    expect(endsSentence('biblioteca.')).toBe(true);
+    expect(endsSentence('¿Listo?')).toBe(true);
+    expect(endsSentence('claro!')).toBe(true);
+    expect(endsSentence('1.1')).toBe(false);
+    expect(endsSentence('Figura')).toBe(false);
     expect(wordDelayMs(300, 1)).toBe(200);
     expect(wordDelayMs(300, 2)).toBe(400);
     expect(wordDelayMs(50, 1)).toBe(600);
@@ -98,6 +103,15 @@ describe('rsvp tokenizer and timing', () => {
       { str: 'sys -', hasEOL: true },
       { str: 'tems', hasEOL: false },
     ])).toBe('sys - tems');
+
+    expect(textItemsToPageText([
+      line('Figura 1.1 esquema', 40, 700, 140),
+      line('sigue la frase.', 40, 684, 100),
+    ])).toBe('Figura 1.1 esquema sigue la frase.');
+    expect(textItemsToPageText([
+      line('Figura 1.1 esquema', 40, 700, 140),
+      line('Otro párrafo.', 40, 660, 100),
+    ])).toBe('Figura 1.1 esquema\nOtro párrafo.');
   });
 
   it('should concatenate text runs that are only split by font or kerning', () => {
@@ -140,7 +154,7 @@ describe('rsvp tokenizer and timing', () => {
           <span class="markedContent">
             <span role="presentation">En esta </span>
             <span role="presentation">página </span>
-            <br role="presentation"></br>
+            <br role="presentation">
             <span role="presentation">hay texto.</span>
           </span>
           <div class="endOfContent">ignore</div>

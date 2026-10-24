@@ -88,6 +88,16 @@ describe('RSVP in fullscreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
     expect(document.fullscreenElement).toBe(host);
 
+    let space!: KeyboardEvent;
+    act(() => {
+      space = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true });
+      window.dispatchEvent(space);
+    });
+    expect(space.defaultPrevented).toBe(true);
+    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('medianas');
+    expect(document.fullscreenElement).toBe(host);
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
+
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
     expect(screen.queryByRole('button', { name: 'Reproducir lectura' })).not.toBeInTheDocument();
     expect(document.fullscreenElement).toBe(host);
@@ -106,12 +116,12 @@ describe('RSVP in fullscreen', () => {
       vi.advanceTimersByTime(500);
     });
     fireEvent.click(screen.getByRole('button', { name: 'Reproducir lectura' }));
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
+    for (const word of ['Figura', '1.1', 'ahora']) {
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent(word);
+    }
     act(() => {
       vi.advanceTimersByTime(200);
     });
