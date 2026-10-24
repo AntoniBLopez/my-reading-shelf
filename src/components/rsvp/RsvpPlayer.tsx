@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -8,6 +8,7 @@ import { RsvpWord } from '@/components/rsvp/RsvpWord';
 import { useRsvp } from '@/hooks/useRsvp';
 import { useRsvpFigures, type FigureResolver } from '@/hooks/useRsvpFigures';
 import { isToggleKey, isTypingTarget } from '@/lib/keyboard';
+import { appendOrphanSteps } from '@/lib/rsvp/figureSteps';
 import type { RsvpToken } from '@/lib/rsvp/tokenize';
 import { RSVP_MAX_WPM, RSVP_MIN_WPM } from '@/lib/rsvp/wpm';
 
@@ -35,49 +36,52 @@ export function RsvpPlayer({
     listOrphans,
     prefetch: prefetchFigures,
   });
-  const rsvp = useRsvp(tokens, { autoPlay, beforeAdvance: figures.beforeAdvance });
-  const { toggle, step, index, total } = rsvp;
+  const sequence = useMemo(
+    () => appendOrphanSteps(tokens, figures.orphans),
+    [tokens, figures.orphans],
+  );
+  const rsvp = useRsvp(sequence, { autoPlay });
+  const { toggle, step, index, total, play } = rsvp;
   const [stageArmed, setStageArmed] = useState(false);
   useEffect(() => {
     const timer = window.setTimeout(() => setStageArmed(true), 450);
     return () => window.clearTimeout(timer);
   }, []);
-  const { figure, continueReading, dismiss } = figures;
+  const cue = rsvp.finished ? null : rsvp.token?.figureStep ?? null;
+  const { focus } = figures;
+  useLayoutEffect(() => {
+    focus(cue);
+  }, [cue, focus]);
 
-  const resume = useCallback(
-    () => continueReading({ index, total, step, play: rsvp.play }),
-    [continueReading, index, total, step, rsvp.play],
-  );
+  const resume = useCallback(() => {
+    if (index >= total - 1) {
+      step(1);
+      return;
+    }
+    step(1);
+    play();
+  }, [index, total, step, play]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
       const onSlider = !!target?.closest('[role="slider"]');
-      const toggleKey = isToggleKey(event);
-      if (figure) {
-        if (toggleKey || event.key === 'ArrowRight' || event.key === 'ArrowUp') {
-          event.preventDefault();
-          event.stopPropagation();
-          resume();
-        }
-        return;
-      }
-      if (toggleKey) {
+      if (isToggleKey(event)) {
         event.preventDefault();
         event.stopPropagation();
-        toggle();
+        if (cue) resume();
+        else toggle();
         return;
       }
+      if (onSlider) return;
       if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-        if (onSlider) return;
         event.preventDefault();
         event.stopPropagation();
         step(-1);
         return;
       }
       if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
-        if (onSlider) return;
         event.preventDefault();
         event.stopPropagation();
         step(1);
@@ -85,7 +89,7 @@ export function RsvpPlayer({
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [figure, resume, toggle, step]);
+  }, [cue, resume, toggle, step]);
 
   const word = rsvp.token?.word ?? '';
 
@@ -98,8 +102,13 @@ export function RsvpPlayer({
         </p>
       </div>
 
-      {figure ? (
-        <RsvpFigure cue={figure} image={figures.image} searching={figures.searching} onContinue={resume} />
+      {cue ? (
+        <RsvpFigure
+          cue={cue}
+          image={figures.figure?.key === cue.key ? figures.image : null}
+          searching={figures.figure?.key === cue.key ? figures.searching : true}
+          onContinue={resume}
+        />
       ) : (
         <div
           data-rsvp-stage
@@ -120,7 +129,7 @@ export function RsvpPlayer({
         </div>
       )}
 
-      {rsvp.finished && !figure && (
+      {rsvp.finished && !cue && (
         <div className="px-4 pb-2 text-center">
           <p className="mb-3 text-sm font-medium">Fin de la página</p>
           {hasNextPage ? (
@@ -138,10 +147,7 @@ export function RsvpPlayer({
               variant="outline"
               size="icon"
               className="h-11 w-11"
-              onClick={() => {
-                dismiss();
-                rsvp.restart();
-              }}
+              onClick={() => rsvp.restart()}
               aria-label="Reiniciar"
               title="Reiniciar"
             >
@@ -151,10 +157,7 @@ export function RsvpPlayer({
               variant="outline"
               size="icon"
               className="h-11 w-11"
-              onClick={() => {
-                dismiss();
-                rsvp.step(-1);
-              }}
+              onClick={() => rsvp.step(-1)}
               aria-label="Palabra anterior"
               title="Palabra anterior"
             >
@@ -163,7 +166,7 @@ export function RsvpPlayer({
             <Button
               size="icon"
               className="h-11 w-11"
-              onClick={() => (figure ? resume() : toggle())}
+              onClick={() => (cue ? resume() : toggle())}
               aria-label={rsvp.playing ? 'Pausar' : 'Reproducir'}
               title={rsvp.playing ? 'Pausar' : 'Reproducir'}
             >
@@ -173,10 +176,7 @@ export function RsvpPlayer({
               variant="outline"
               size="icon"
               className="h-11 w-11"
-              onClick={() => {
-                dismiss();
-                rsvp.step(1);
-              }}
+              onClick={() => rsvp.step(1)}
               aria-label="Palabra siguiente"
               title="Palabra siguiente"
             >

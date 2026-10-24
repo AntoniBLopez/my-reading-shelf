@@ -1,4 +1,5 @@
 import { FigureImageCache, figureCacheKey } from '@/lib/rsvp/figures/cache';
+import { captionNumberIndexes } from '@/lib/rsvp/figures/belowImage';
 import { captionBox, groupLines, orphanCaptions, type CaptionLine } from '@/lib/rsvp/figures/matchCaption';
 import { imageBoxesFromOps } from '@/lib/rsvp/figures/operatorImages';
 import { chooseCrop } from '@/lib/rsvp/figures/crop';
@@ -187,6 +188,15 @@ export function createPdfFigureResolver(
       const pageFacts = await loadFacts(pageNumber);
       if (!pageFacts) return [];
       return orphanCaptions(pageFacts.lines, mentioned);
+    },
+    async captionIndexes(
+      pageNumber: number,
+      tokens: readonly { word: string; endsBlock?: boolean }[],
+    ): Promise<number[]> {
+      if (disposed) return [];
+      const pageFacts = await loadFacts(pageNumber);
+      if (!pageFacts) return [];
+      return captionNumberIndexes(tokens, pageFacts.lines, pageFacts.images);
     },
     dispose() {
       disposed = true;

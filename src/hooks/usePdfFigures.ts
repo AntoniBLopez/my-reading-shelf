@@ -41,5 +41,12 @@ export function usePdfFigures(
     resolverRef.current?.prefetch(pageNumber);
   }, []);
 
-  return { resolveFigure, listOrphans, prefetch };
+  const captionIndexes = useCallback(
+    (pageNumber: number, tokens: readonly { word: string; endsBlock?: boolean }[]) => {
+      return resolverRef.current?.captionIndexes(pageNumber, tokens) ?? Promise.resolve([]);
+    },
+    [],
+  );
+
+  return { resolveFigure, listOrphans, prefetch, captionIndexes };
 }

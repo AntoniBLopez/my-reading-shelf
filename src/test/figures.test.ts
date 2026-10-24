@@ -5,7 +5,9 @@ import { captionBox, groupLines, matchCaption, orphanCaptions } from '@/lib/rsvp
 import { imageBoxesFromOps } from '@/lib/rsvp/figures/operatorImages';
 import { cropPaintedPage, viewportCrop } from '@/lib/rsvp/figures/paintBitmap';
 import { createPdfFigureResolver } from '@/lib/rsvp/figures/pdfFigures';
-import { attachFigureCues, findMentions, sentenceEndIndex } from '@/lib/rsvp/figures/references';
+import { captionNumberIndexes, isCaptionDirectlyBelow } from '@/lib/rsvp/figures/belowImage';
+import { expandFigureSteps } from '@/lib/rsvp/figureSteps';
+import { attachFigureCues, findMentions, isGluedFigurePeriod, sentenceEndIndex } from '@/lib/rsvp/figures/references';
 import { tokenize } from '@/lib/rsvp/tokenize';
 import { textBoxesFromItems } from '@/lib/rsvp/figures/textBoxes';
 import type { Box, FigureCue } from '@/lib/rsvp/figures/types';
@@ -56,6 +58,33 @@ describe('figure references', () => {
     expect(tokens.find((token) => token.word === 'largo.')?.figureAfter).toBeUndefined();
   });
 
+  it('should treat a period glued to a figure number as part of that number', () => {
+    expect(isGluedFigurePeriod('1.1.')).toBe(true);
+    expect(isGluedFigurePeriod('3-2.')).toBe(true);
+    expect(isGluedFigurePeriod('1.')).toBe(true);
+    expect(isGluedFigurePeriod('Fig.')).toBe(false);
+    expect(isGluedFigurePeriod('continúa.')).toBe(false);
+  });
+
+  it('should end the sentence on a glued figure period when the mention is running text', () => {
+    const tokens = attachFigureCues(tokenize('Ve la Figura 1.1. Aquí.'));
+    expect(tokens.find((token) => token.figureAfter)?.word).toBe('1.1.');
+    const steps = expandFigureSteps(tokens);
+    expect(steps.map((token) => token.word)).toEqual(['Ve', 'la', 'Figura', '1.1.', 'Figura 1.1', 'Aquí.']);
+    expect(steps[4].figureStep?.key).toBe('figure:1.1');
+    expect(steps[3].figureStep).toBeUndefined();
+  });
+
+  it('should skip a glued caption period and show the figure after the following sentence', () => {
+    const tokens = tokenize('Figura 1.1.\nEl aparato sigue aquí.');
+    const numberIndex = tokens.findIndex((token) => token.word === '1.1.');
+    const cued = attachFigureCues(tokens, new Set([numberIndex]));
+    expect(cued.find((token) => token.figureAfter)?.word).toBe('aquí.');
+    expect(cued.find((token) => token.word === '1.1.')?.figureAfter).toBeUndefined();
+    const steps = expandFigureSteps(cued);
+    expect(steps[steps.length - 1]?.figureStep?.key).toBe('figure:1.1');
+  });
+
   it('should join hyphenated, dashed, and split figure numbers', () => {
     expect(findMentions(['Figura', '1-1']).map((mention) => mention.cue.number)).toEqual(['1.1']);
     expect(findMentions(['Figura', '1–1']).map((mention) => mention.cue.number)).toEqual(['1.1']);
@@ -81,6 +110,32 @@ describe('figure captions', () => {
     expect(captionBox(lines, cue('figure:1.1', 'figure', '1.1'))).toMatchObject({ x: 40, y: 100 });
     expect(matchCaption(groupLines(typed)[0].text)?.key).toBe('figure:1.1');
     expect(orphanCaptions(lines, new Set(['figure:1.1'])).map((item) => item.key)).toEqual(['table:2']);
+  });
+});
+
+describe('caption under the image', () => {
+  const image = { x: 36, y: 130, width: 220, height: 160 };
+
+  it('should treat a line just under the graphic as its caption', () => {
+    const caption = { x: 40, y: 100, width: 80, height: 12 };
+    expect(isCaptionDirectlyBelow(caption, image)).toBe(true);
+    expect(isCaptionDirectlyBelow({ x: 40, y: 10, width: 80, height: 12 }, image)).toBe(false);
+    expect(isCaptionDirectlyBelow({ x: 40, y: 400, width: 80, height: 12 }, image)).toBe(false);
+    expect(isCaptionDirectlyBelow({ x: 400, y: 100, width: 80, height: 12 }, image)).toBe(false);
+  });
+
+  it('should mark only the number token of a caption that sits under the image', () => {
+    const tokens = tokenize('Ve la Figura 1.1. Luego.\nFigura 1.1.');
+    const lines = [
+      { text: 'Ve la Figura 1.1. Luego.', box: { x: 40, y: 400, width: 220, height: 12 } },
+      { text: 'Figura 1.1.', box: { x: 40, y: 108, width: 80, height: 12 } },
+    ];
+    const indexes = captionNumberIndexes(tokens, lines, [image]);
+    const numberIndexes = tokens.flatMap((token, index) => (token.word === '1.1.' ? [index] : []));
+    expect(indexes).toEqual([numberIndexes[1]]);
+    const cued = attachFigureCues(tokens, new Set(indexes));
+    expect(cued.find((token) => token.figureAfter)?.word).toBe('1.1.');
+    expect(cued.filter((token) => token.word === '1.1.')[0]?.figureAfter?.key).toBe('figure:1.1');
   });
 });
 
