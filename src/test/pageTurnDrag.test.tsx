@@ -153,7 +153,7 @@ describe('page turn drag', () => {
     return node as HTMLElement;
   }
 
-  it('follows the finger and turns the page on a horizontal swipe', async () => {
+  it('GIVEN a reader page WHEN the user swipes horizontally THEN the page follows the finger and turns', async () => {
     const onCommit = vi.fn();
     const view = render(<Reader initialPage={2} onCommit={onCommit} />);
     const scene = document.querySelector('.pdf-turn-scene');
@@ -176,7 +176,7 @@ describe('page turn drag', () => {
     view.unmount();
   });
 
-  it('does not turn on a small drag', async () => {
+  it('GIVEN a reader page WHEN the drag is small THEN the same page stays', async () => {
     const onCommit = vi.fn();
     render(<Reader initialPage={2} onCommit={onCommit} />);
     const scene = document.querySelector('.pdf-turn-scene');
@@ -194,7 +194,7 @@ describe('page turn drag', () => {
     expect(leaf().style.transform).toBe('');
   });
 
-  it('does not turn on a vertical drag', async () => {
+  it('GIVEN a reader page WHEN the drag is vertical THEN the page does not turn', async () => {
     const onCommit = vi.fn();
     render(<Reader initialPage={2} onCommit={onCommit} />);
     const scene = document.querySelector('.pdf-turn-scene');
@@ -212,7 +212,7 @@ describe('page turn drag', () => {
     expect(scene.hasAttribute('data-turn')).toBe(false);
   });
 
-  it('does not leave the first or last page', async () => {
+  it('GIVEN the first page WHEN the user swipes toward the previous page THEN the book stays on that page', async () => {
     const onCommit = vi.fn();
     render(<Reader initialPage={1} numPages={4} onCommit={onCommit} />);
     const scene = document.querySelector('.pdf-turn-scene');
@@ -232,7 +232,7 @@ describe('page turn drag', () => {
     expect(leaf().textContent).toBe('1');
   });
 
-  it('commits a short flick when the finger is moving fast', async () => {
+  it('GIVEN a reader page WHEN the finger flicks a short distance THEN the next page is committed', async () => {
     let now = 1000;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
     const onCommit = vi.fn();
@@ -248,7 +248,7 @@ describe('page turn drag', () => {
     await waitFor(() => expect(onCommit).toHaveBeenCalledWith(3));
   });
 
-  it('turns from the reader controls with the same release', async () => {
+  it('GIVEN a reader page WHEN the reader controls turn the page THEN the same release commits', async () => {
     const onCommit = vi.fn();
     const stageRef = createRef<PDFPageStageHandle>();
     render(<Reader initialPage={2} onCommit={onCommit} stageRef={stageRef} />);
@@ -257,7 +257,7 @@ describe('page turn drag', () => {
     await waitFor(() => expect(leaf().textContent).toBe('1'));
   });
 
-  it('ignores a swipe while zoom, pinch, or a selection blocks turning', async () => {
+  it('GIVEN turning is blocked WHEN the user swipes THEN the page stays', async () => {
     const onCommit = vi.fn();
     render(<Reader initialPage={2} onCommit={onCommit} enabled={false} />);
     const scene = document.querySelector('.pdf-turn-scene');

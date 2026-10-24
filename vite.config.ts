@@ -4,6 +4,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "path";
+import { workboxClientUpdate } from "./src/lib/pwaUpdate.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -107,9 +108,7 @@ export default defineConfig({
       devOptions: { enabled: false },
       manifest: false,
       workbox: {
-        skipWaiting: true,
-        clientsClaim: true,
-        cleanupOutdatedCaches: true,
+        ...workboxClientUpdate,
         // Include .mjs/.wasm so pdf.js worker + OpenJPEG decode work offline.
         globPatterns: ["**/*.{js,mjs,css,html,ico,png,svg,webmanifest,wasm,bcmap,pfb,ttf}"],
         navigateFallback: "index.html",

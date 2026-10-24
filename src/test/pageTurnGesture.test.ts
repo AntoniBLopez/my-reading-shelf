@@ -15,7 +15,7 @@ import {
 } from '@/lib/pageTurnGesture';
 
 describe('page turn gesture', () => {
-  it('keeps a drag pending until it is clearly horizontal or vertical', () => {
+  it('should keep a drag pending until it is clearly horizontal or vertical', () => {
     expect(gesturePhase(0, 0)).toBe('pending');
     expect(gesturePhase(DRAG_START_PX - 1, 0)).toBe('pending');
     expect(gesturePhase(DRAG_START_PX, DRAG_START_PX)).toBe('pending');
@@ -25,14 +25,14 @@ describe('page turn gesture', () => {
     expect(gesturePhase(10, 30)).toBe('vertical');
   });
 
-  it('maps finger direction to the page that should be revealed', () => {
+  it('should map finger direction to the page that should be revealed', () => {
     expect(directionFromDx(-1)).toBe('next');
     expect(directionFromDx(4)).toBe('prev');
     expect(targetPage(4, 'next')).toBe(5);
     expect(targetPage(4, 'prev')).toBe(3);
   });
 
-  it('blocks the edge page and every page when the book is empty', () => {
+  it('should block the edge page and every page when the book is empty', () => {
     expect(isEdgeBlocked('prev', 1, 8)).toBe(true);
     expect(isEdgeBlocked('next', 8, 8)).toBe(true);
     expect(isEdgeBlocked('next', 1, 1)).toBe(true);
@@ -41,7 +41,7 @@ describe('page turn gesture', () => {
     expect(isEdgeBlocked('next', 1, 0)).toBe(true);
   });
 
-  it('follows the finger 1:1 and only resists an edge', () => {
+  it('should follow the finger 1:1 and only resist an edge', () => {
     expect(leafOffsetPx(-120, 300, 'next', false)).toBe(-120);
     expect(leafOffsetPx(40, 300, 'next', false)).toBe(0);
     expect(leafOffsetPx(-900, 300, 'next', false)).toBe(-300);
@@ -52,19 +52,19 @@ describe('page turn gesture', () => {
     expect(resisted).toBeLessThan(0);
   });
 
-  it('measures progress across the page and ignores the wrong direction', () => {
+  it('should measure progress across the page and ignore the wrong direction', () => {
     expect(turnProgress(-150, 300, 'next')).toBeCloseTo(0.5);
     expect(turnProgress(150, 300, 'next')).toBe(0);
     expect(turnProgress(300, 200, 'prev')).toBe(1);
   });
 
-  it('keeps the previous velocity when the sample is too short to trust', () => {
+  it('should keep the previous velocity when the sample is too short to trust', () => {
     expect(nextVelocity(1.2, 10, 11, 100, 107)).toBe(1.2);
     expect(nextVelocity(0, 10, 26, 100, 108)).toBeCloseTo(2);
     expect(nextVelocity(0, 40, 10, 100, 116)).toBeCloseTo(-1.875);
   });
 
-  it('commits on distance or a flick and never on a blocked edge', () => {
+  it('should commit on distance or a flick and never on a blocked edge', () => {
     expect(shouldCommitTurn({ progress: COMMIT_PROGRESS, vx: 0, dir: 'next', blocked: false })).toBe(true);
     expect(shouldCommitTurn({ progress: COMMIT_PROGRESS - 0.01, vx: 0, dir: 'next', blocked: false })).toBe(false);
     expect(
@@ -76,7 +76,7 @@ describe('page turn gesture', () => {
     expect(shouldCommitTurn({ progress: 1, vx: -4, dir: 'next', blocked: true })).toBe(false);
   });
 
-  it('parks a committed sheet off the page and returns a cancelled one home', () => {
+  it('should park a committed sheet off the page and return a cancelled one home', () => {
     expect(releaseOffsetPx(300, 'next', true)).toBe(-300);
     expect(releaseOffsetPx(300, 'prev', true)).toBe(300);
     expect(releaseOffsetPx(300, 'next', false)).toBe(0);

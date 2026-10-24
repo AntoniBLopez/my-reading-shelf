@@ -134,7 +134,7 @@ describe('page turn performance', () => {
     window.matchMedia = originalMatchMedia;
   });
 
-  it('paints the drag on one animation frame and does not render pages again', () => {
+  it('GIVEN a drag WHEN frames are flushed THEN the page paints once and is not rendered again', () => {
     render(<Reader />);
     const scene = document.querySelector('.pdf-turn-scene');
     if (!scene) throw new Error('missing scene');
@@ -161,7 +161,7 @@ describe('page turn performance', () => {
     expect(pageRender).not.toHaveBeenCalled();
   });
 
-  it('does not install a touch listener until the gesture is horizontal', () => {
+  it('GIVEN a pointer down WHEN the move is vertical THEN no touch listener is installed', () => {
     render(<Reader />);
     const scene = document.querySelector('.pdf-turn-scene');
     if (!scene) throw new Error('missing scene');
@@ -183,7 +183,7 @@ describe('page turn performance', () => {
     expect(added).toContainEqual({ type: 'touchmove', passive: false });
   });
 
-  it('renders only the neighbor pages, at a lower resolution on touch screens', () => {
+  it('GIVEN a touch screen WHEN the stage mounts THEN only the neighbor pages render at a lower resolution', () => {
     window.matchMedia = media(true);
     render(<Reader initialPage={3} />);
     const pages = pageRender.mock.calls.map(([page, ratio]) => ({ page, ratio }));
@@ -192,7 +192,7 @@ describe('page turn performance', () => {
     expect(pages.filter((entry) => entry.page !== 3).every((entry) => entry.ratio === 1)).toBe(true);
   });
 
-  it('keeps the desktop page at the screen ratio', () => {
+  it('GIVEN a desktop screen WHEN the stage mounts THEN the page keeps the screen ratio', () => {
     window.matchMedia = media(false);
     render(<Reader initialPage={3} />);
     const leaf = pageRender.mock.calls.find(([page]) => page === 3);

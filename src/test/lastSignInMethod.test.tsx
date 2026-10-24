@@ -22,7 +22,7 @@ describe('last sign-in method storage', () => {
     localStorage.clear();
   });
 
-  it('stores a method in its own key and ignores anything else', () => {
+  it('should store a method in its own key and ignore anything else', () => {
     expect(readLastSignInMethod()).toBeNull();
 
     writeLastSignInMethod('email');
@@ -38,7 +38,7 @@ describe('last sign-in method storage', () => {
     expect(lastSignInMethodCaption('email')).toBe('La última vez iniciaste sesión con Email');
   });
 
-  it('leaves the key in place when other storage is removed and when signing out', () => {
+  it('should leave the key in place when other storage is removed and when signing out', () => {
     writeLastSignInMethod('email');
     localStorage.setItem('reading-shelf-folders', '[]');
     localStorage.removeItem('reading-shelf-folders');
@@ -54,7 +54,7 @@ describe('last sign-in method storage', () => {
     expect(readLastSignInMethod()).toBe('email');
   });
 
-  it('does not throw when storage is blocked', () => {
+  it('should not throw when storage is blocked', () => {
     const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });

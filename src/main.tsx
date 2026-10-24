@@ -1,14 +1,13 @@
 import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
+import { onRegisteredServiceWorker } from "@/lib/pwaUpdate";
 import App from "./App.tsx";
 import "./index.css";
 
 if (import.meta.env.PROD) {
   registerSW({
     immediate: true,
-    onRegisteredSW(_url, registration) {
-      void registration?.update();
-    },
+    onRegisteredSW: onRegisteredServiceWorker,
   });
 } else if ("serviceWorker" in navigator) {
   // Prevent stale Workbox service workers from intercepting Vite dev requests.

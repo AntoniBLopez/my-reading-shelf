@@ -29,7 +29,7 @@ describe('AuthForm last used sign-in marker', () => {
     resetPassword.mockResolvedValue({ error: null });
   });
 
-  it('marks the email field and captions it only on the sign-in view', async () => {
+  it('GIVEN a stored email sign-in WHEN the sign-in view is shown THEN the email field is marked', async () => {
     localStorage.setItem(LAST_SIGN_IN_METHOD_KEY, 'email');
     render(<AuthForm />);
 
@@ -52,13 +52,13 @@ describe('AuthForm last used sign-in marker', () => {
     expect(screen.getByLabelText('Email')).not.toHaveClass('last-used-sign-in');
   });
 
-  it('shows nothing when no method has been stored', () => {
+  it('GIVEN no stored method WHEN the form renders THEN no marker is shown', () => {
     render(<AuthForm />);
     expect(screen.queryByTestId('last-used-sign-in-caption')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Email')).not.toHaveClass('last-used-sign-in');
   });
 
-  it('writes the key only after email sign-in succeeds', async () => {
+  it('GIVEN the sign-in view WHEN email sign-in succeeds THEN the method is stored', async () => {
     signIn.mockResolvedValueOnce({ error: new Error('Credenciales incorrectas') });
     render(<AuthForm />);
 
@@ -78,7 +78,7 @@ describe('AuthForm last used sign-in marker', () => {
     });
   });
 
-  it('does not store a method after sign-up or a reset link', async () => {
+  it('GIVEN sign-up or a reset link WHEN it succeeds THEN no method is stored', async () => {
     const { unmount } = render(<AuthForm />);
 
     fireEvent.click(screen.getByRole('button', { name: '¿No tienes cuenta? Regístrate' }));
@@ -103,7 +103,7 @@ describe('AuthForm last used sign-in marker', () => {
 });
 
 describe('LastUsedSignInControl', () => {
-  it('keeps a social button’s own classes and only adds the marker', () => {
+  it('should keep a social button’s own classes and only add the marker', () => {
     render(
       <LastUsedSignInControl active>
         <button type="button" className="border bg-background text-foreground">
