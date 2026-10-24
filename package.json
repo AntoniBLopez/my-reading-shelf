@@ -19,7 +19,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "node node_modules/vite/bin/vite.js preview",
-    "test": "vitest run",
+    "test": "pnpm install --frozen-lockfile && vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {

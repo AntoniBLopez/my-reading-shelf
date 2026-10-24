@@ -1,4 +1,10 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "*": false,
+      "master": true
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
