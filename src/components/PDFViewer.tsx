@@ -35,6 +35,7 @@ import { usePdfFigures } from '@/hooks/usePdfFigures';
 import { useReaderChromeKeys } from '@/hooks/useReaderChromeKeys';
 import { useReaderPageText } from '@/hooks/useReaderPageText';
 import type { ReadablePdf } from '@/lib/rsvp/pageText';
+import { focusReaderFullscreenRoot, guardReaderFullscreenClick } from '@/lib/readerFullscreen';
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const MOBILE_LAYOUT_QUERY = '(max-width: 1023px)';
@@ -860,6 +861,11 @@ function PDFViewerComponent({
       return;
     }
 
+    // Own focus before the browser promotes the pane. Otherwise a control
+    // outside it (the title-bar close button) unmounts and the next click
+    // hits the dialog backdrop.
+    focusReaderFullscreenRoot(el);
+
     if (isMobileOrTablet) {
       setIsFullscreen(true);
       return;
@@ -901,6 +907,7 @@ function PDFViewerComponent({
     const onFullscreenChange = () => {
       const doc = document as Document & { webkitFullscreenElement?: Element };
       if (!document.fullscreenElement && !doc.webkitFullscreenElement) setIsFullscreen(false);
+      else focusReaderFullscreenRoot(fullscreenRef.current);
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('webkitfullscreenchange', onFullscreenChange);
@@ -923,6 +930,8 @@ function PDFViewerComponent({
         onEscapeKeyDown={(event) => {
           if (rsvpOpenRef.current) event.preventDefault();
         }}
+        onPointerDownOutside={(event) => guardReaderFullscreenClick(fullscreenRef.current, event)}
+        onInteractOutside={(event) => guardReaderFullscreenClick(fullscreenRef.current, event)}
       >
         {!isFullscreen && (
         <DialogHeader className="px-4 py-3 border-b bg-muted/50">
@@ -954,7 +963,7 @@ function PDFViewerComponent({
         )}
 
         {/* Área de pantalla completa: toolbar + contenido (zoom y páginas disponibles en fullscreen) */}
-        <div ref={fullscreenRef} className="flex-1 flex flex-col min-h-0 min-w-0 relative">
+        <div ref={fullscreenRef} tabIndex={-1} className="flex-1 flex flex-col min-h-0 min-w-0 relative outline-none">
           {isFullscreen && showFullscreenHint && (
             <div className="absolute top-[40px] left-0 right-0 z-10 flex justify-center pt-3 pb-2 px-4 pointer-events-none">
               <p className="text-xs sm:text-sm text-center text-foreground/90 bg-background/95 backdrop-blur rounded-lg px-3 py-2 shadow-md border border-border/50">
