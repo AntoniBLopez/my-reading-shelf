@@ -7,6 +7,7 @@ import { RsvpFigure } from '@/components/rsvp/RsvpFigure';
 import { RsvpWord } from '@/components/rsvp/RsvpWord';
 import { useRsvp } from '@/hooks/useRsvp';
 import { useRsvpFigures, type FigureResolver } from '@/hooks/useRsvpFigures';
+import { isToggleKey, isTypingTarget } from '@/lib/keyboard';
 import type { RsvpToken } from '@/lib/rsvp/tokenize';
 import { RSVP_MAX_WPM, RSVP_MIN_WPM } from '@/lib/rsvp/wpm';
 
@@ -50,19 +51,19 @@ export function RsvpPlayer({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
       const onSlider = !!target?.closest('[role="slider"]');
+      const toggleKey = isToggleKey(event);
       if (figure) {
-        if (target?.closest('button')) return;
-        if (event.key === ' ' || event.code === 'Space' || event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+        if (toggleKey || event.key === 'ArrowRight' || event.key === 'ArrowUp') {
           event.preventDefault();
           event.stopPropagation();
           resume();
         }
         return;
       }
-      if (event.key === ' ' || event.code === 'Space') {
-        if (target?.closest('button') && !target.closest('[data-rsvp-stage]')) return;
+      if (toggleKey) {
         event.preventDefault();
         event.stopPropagation();
         toggle();

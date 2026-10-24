@@ -5,7 +5,8 @@ import { captionBox, groupLines, matchCaption, orphanCaptions } from '@/lib/rsvp
 import { imageBoxesFromOps } from '@/lib/rsvp/figures/operatorImages';
 import { cropPaintedPage, viewportCrop } from '@/lib/rsvp/figures/paintBitmap';
 import { createPdfFigureResolver } from '@/lib/rsvp/figures/pdfFigures';
-import { attachFigureCues, findMentions } from '@/lib/rsvp/figures/references';
+import { attachFigureCues, findMentions, sentenceEndIndex } from '@/lib/rsvp/figures/references';
+import { tokenize } from '@/lib/rsvp/tokenize';
 import { textBoxesFromItems } from '@/lib/rsvp/figures/textBoxes';
 import type { Box, FigureCue } from '@/lib/rsvp/figures/types';
 
@@ -32,19 +33,27 @@ describe('figure references', () => {
     ]);
   });
 
-  it('should attach a figure cue only to the first mention', () => {
-    const tokens = attachFigureCues([
-      { word: 'Figura' },
-      { word: '1.1' },
-      { word: 'luego' },
-      { word: 'Fig.' },
-      { word: '1.1' },
-      { word: 'Tabla' },
-      { word: '1.1' },
-    ]);
-    expect(tokens[1].figureAfter).toEqual(cue('figure:1.1', 'figure', '1.1'));
-    expect(tokens[4].figureAfter).toBeUndefined();
-    expect(tokens[6].figureAfter?.key).toBe('table:1.1');
+  it('should attach a figure cue only to the first mention, at the end of its sentence', () => {
+    const tokens = attachFigureCues(tokenize('Figura 1.1 luego. Fig. 1.1 otra vez. Tabla 1.1 cierra.'));
+    const first = tokens.filter((token) => token.figureAfter?.key === 'figure:1.1');
+    expect(first).toHaveLength(1);
+    expect(first[0].word).toBe('luego.');
+    expect(tokens.find((token) => token.word === '1.1')?.figureAfter).toBeUndefined();
+    expect(tokens.find((token) => token.figureAfter?.key === 'table:1.1')?.word).toBe('cierra.');
+  });
+
+  it('should keep reading a mid-sentence mention until the period', () => {
+    const tokens = attachFigureCues(tokenize('Como se ve en la Figura 1.1 el sistema continúa.'));
+    expect(tokens.find((token) => token.word === '1.1')?.figureAfter).toBeUndefined();
+    expect(tokens.find((token) => token.figureAfter)?.word).toBe('continúa.');
+    expect(sentenceEndIndex(tokens, 5)).toBe(tokens.findIndex((token) => token.word === 'continúa.'));
+  });
+
+  it('should end a caption without a period at the block break', () => {
+    const tokens = attachFigureCues(tokenize('Figura 1.1 El esquema\nSigue el párrafo largo.'));
+    expect(tokens.find((token) => token.word === 'esquema')?.endsBlock).toBe(true);
+    expect(tokens.find((token) => token.figureAfter)?.word).toBe('esquema');
+    expect(tokens.find((token) => token.word === 'largo.')?.figureAfter).toBeUndefined();
   });
 
   it('should join hyphenated, dashed, and split figure numbers', () => {

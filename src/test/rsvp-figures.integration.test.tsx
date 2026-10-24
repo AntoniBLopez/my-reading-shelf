@@ -96,9 +96,9 @@ describe('RSVP figures', () => {
     expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('medianas');
   });
 
-  it("GIVEN text mentioning 'Figura 1.1' WHEN those words finish THEN the figure is shown paused and Continuar resumes", async () => {
+  it('GIVEN a sentence mentioning Figura 1.1 WHEN that sentence ends THEN the figure is shown paused and Continuar resumes', async () => {
     const resolveFigure = vi.fn(async (cue: FigureCue) => ({ url: 'blob:fig', label: cue.label }));
-    render(<Reader text="Mira Figura 1.1 ahora" resolveFigure={resolveFigure} />);
+    render(<Reader text="Mira Figura 1.1 ahora mismo. Sigue" resolveFigure={resolveFigure} />);
     fireEvent.click(screen.getByRole('button', { name: 'Lectura rápida' }));
     await flushLoad();
     act(() => {
@@ -106,16 +106,15 @@ describe('RSVP figures', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Reproducir lectura' }));
 
+    for (const word of ['Figura', '1.1', 'ahora', 'mismo.']) {
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent(word);
+      expect(screen.queryByRole('img', { name: 'Figura 1.1' })).not.toBeInTheDocument();
+    }
     act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('Figura');
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('1.1');
-    act(() => {
-      vi.advanceTimersByTime(200);
+      vi.advanceTimersByTime(400);
     });
 
     await act(async () => {
@@ -123,16 +122,86 @@ describe('RSVP figures', () => {
     });
     const image = screen.getByRole('img', { name: 'Figura 1.1' });
     expect(image).toHaveAttribute('src', 'blob:fig');
+    expect(image).not.toHaveStyle({ filter: 'invert(1)' });
+    expect(screen.getByTestId('rsvp-figure')).toHaveClass('bg-white');
     expect(screen.getByRole('button', { name: 'Continuar' })).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(1000);
     });
     expect(screen.getByRole('img', { name: 'Figura 1.1' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Pausar lectura' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
-    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('ahora');
+    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('Sigue');
+  });
+
+  it('GIVEN dark mode WHEN the sentence that mentions a figure ends THEN the figure is inverted on a dark panel', async () => {
+    document.documentElement.classList.add('dark');
+    render(
+      <Reader
+        text="Figura 1.1 al final."
+        resolveFigure={async (cue) => ({ url: 'blob:dark', label: cue.label })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Lectura rápida' }));
+    await flushLoad();
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Reproducir lectura' }));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('1.1');
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('al');
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('final.');
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const image = screen.getByRole('img', { name: 'Figura 1.1' });
+    expect(image).toHaveStyle({ filter: 'invert(1)' });
+    expect(screen.getByTestId('rsvp-figure')).toHaveClass('bg-black');
+    document.documentElement.classList.remove('dark');
+  });
+
+  it('GIVEN RSVP is open WHEN Space or Enter is pressed THEN playback toggles and the focused button is not activated twice', async () => {
+    render(<Reader text="uno dos tres" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Lectura rápida' }));
+    await flushLoad();
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    const play = screen.getByRole('button', { name: 'Reproducir' });
+    play.focus();
+    let enter!: KeyboardEvent;
+    act(() => {
+      enter = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true });
+      play.dispatchEvent(enter);
+    });
+    expect(enter.defaultPrevented).toBe(true);
+    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('uno');
+
+    let space!: KeyboardEvent;
+    act(() => {
+      space = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true });
+      window.dispatchEvent(space);
+    });
+    expect(space.defaultPrevented).toBe(true);
+    expect(screen.getByRole('button', { name: 'Reproducir lectura' })).toHaveTextContent('uno');
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole('button', { name: 'Reproducir lectura' })).toHaveTextContent('uno');
   });
 
   it('GIVEN a caption the page never cites WHEN the words finish THEN that figure is shown paused', async () => {

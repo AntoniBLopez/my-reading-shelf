@@ -29,17 +29,23 @@ export function textItemsToPageText(items: readonly unknown[]): string {
   let out = '';
   let prev: TextRun | null = null;
   let afterEOL = false;
+  let emptyEol = 0;
 
   for (const item of items) {
     const run = readRun(item);
     if (!run) continue;
     if (!run.text) {
-      if (run.hasEOL) afterEOL = true;
+      if (run.hasEOL) {
+        afterEOL = true;
+        emptyEol += 1;
+      }
       continue;
     }
 
     if (!prev) {
       out = run.text;
+    } else if (emptyEol >= 2 || isBlockGap(prev, run)) {
+      out = appendBlock(out, run.text);
     } else if (afterEOL || isNewLine(prev, run)) {
       out = appendNewLine(out, run.text);
     } else {
@@ -48,6 +54,7 @@ export function textItemsToPageText(items: readonly unknown[]): string {
 
     prev = run;
     afterEOL = run.hasEOL;
+    emptyEol = 0;
   }
 
   return stripInvisibles(out).replace(/[ \t\u00A0]+/g, ' ').trim();
@@ -133,6 +140,23 @@ function isNewLine(prev: TextRun, next: TextRun): boolean {
   if (!prev.hasGeometry || !next.hasGeometry) return false;
   const font = Math.max(prev.height, next.height);
   return Math.abs(next.y - prev.y) > font * 0.5;
+}
+
+/** A gap taller than a wrapped line: paragraph, caption, or other block. */
+function isBlockGap(prev: TextRun, next: TextRun): boolean {
+  if (!prev.hasGeometry || !next.hasGeometry) return false;
+  const font = Math.max(prev.height, next.height);
+  return Math.abs(next.y - prev.y) > font * 1.75;
+}
+
+function appendBlock(out: string, nextText: string): string {
+  const next = nextText.replace(/^[ \t\u00A0]+/u, '');
+  const body = wordBeforeLineHyphen(out);
+  if (body != null && STARTS_WITH_LETTER.test(next)) return body + next;
+  const end = out.replace(/[ \t\u00A0]+$/u, '');
+  if (!end) return next;
+  if (!next) return end;
+  return `${end}\n${next}`;
 }
 
 function appendNewLine(out: string, nextText: string): string {

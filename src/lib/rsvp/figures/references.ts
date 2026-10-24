@@ -1,4 +1,5 @@
 import type { FigureCue, FigureKind } from '@/lib/rsvp/figures/types';
+import { endsSentence } from '@/lib/rsvp/timing';
 
 const LABEL_BODY = 'figura|figure|fig\\.?|tabla|table|cuadro|gr[aá]fico|imagen|image|l[aá]mina|plate';
 const LABEL = new RegExp(`^(?:${LABEL_BODY})$`, 'i');
@@ -88,14 +89,32 @@ export function mentionKeys(words: readonly string[]): Set<string> {
   return new Set(findMentions(words).map((mention) => mention.cue.key));
 }
 
-/** Attach each figure to the last word of its first mention. Later mentions stay words. */
-export function attachFigureCues<T extends { word: string }>(tokens: readonly T[]): (T & { figureAfter?: FigureCue })[] {
+type ReadableToken = { word: string; endsBlock?: boolean };
+
+/**
+ * Index of the word that closes the sentence containing `from`.
+ * Computed once per mention while the page is prepared, not on each tick.
+ */
+export function sentenceEndIndex(tokens: readonly ReadableToken[], from: number): number {
+  const last = Math.max(0, tokens.length - 1);
+  for (let index = Math.max(0, from); index <= last; index += 1) {
+    const token = tokens[index];
+    if (endsSentence(token.word) || token.endsBlock) return index;
+  }
+  return last;
+}
+
+/** Attach each first mention to the end of its sentence. Later mentions stay words. */
+export function attachFigureCues<T extends ReadableToken>(tokens: readonly T[]): (T & { figureAfter?: FigureCue })[] {
   const seen = new Set<string>();
   const cueAt = new Map<number, FigureCue>();
-  for (const mention of findMentions(tokens.map((token) => token.word))) {
+  const words = tokens.map((token) => token.word);
+  for (const mention of findMentions(words)) {
     if (seen.has(mention.cue.key)) continue;
     seen.add(mention.cue.key);
-    cueAt.set(mention.endIndex, mention.cue);
+    let at = sentenceEndIndex(tokens, mention.endIndex);
+    while (cueAt.has(at) && at < tokens.length - 1) at += 1;
+    cueAt.set(at, mention.cue);
   }
   return tokens.map((token, index) => {
     const cue = cueAt.get(index);

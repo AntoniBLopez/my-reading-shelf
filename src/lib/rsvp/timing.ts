@@ -3,10 +3,15 @@ import { clampWpm } from '@/lib/rsvp/wpm';
 const SENTENCE_END = /(?:[.!?…]|\.\.\.)['")\]]*$/;
 const CLAUSE_BREAK = /[,;:–—]['")\]]*$/;
 
+/** A word that closes a sentence: period, question mark, exclamation, or ellipsis. */
+export function endsSentence(word: string): boolean {
+  return SENTENCE_END.test(word);
+}
+
 /** Extra hold for punctuation and long words. The larger pause wins. */
 export function delayFactor(word: string): number {
   let factor = 1;
-  if (SENTENCE_END.test(word)) factor = 2;
+  if (endsSentence(word)) factor = 2;
   else if (CLAUSE_BREAK.test(word)) factor = 1.5;
 
   const letters = word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').length;
