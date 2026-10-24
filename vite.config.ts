@@ -107,6 +107,9 @@ export default defineConfig({
       devOptions: { enabled: false },
       manifest: false,
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         // Include .mjs/.wasm so pdf.js worker + OpenJPEG decode work offline.
         globPatterns: ["**/*.{js,mjs,css,html,ico,png,svg,webmanifest,wasm,bcmap,pfb,ttf}"],
         navigateFallback: "index.html",

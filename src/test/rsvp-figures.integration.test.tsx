@@ -75,11 +75,35 @@ describe('RSVP figures', () => {
     expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('esta');
   });
 
+  it('GIVEN a book open WHEN the user taps the rayo, changes the speed, and waits THEN the word stays until play', async () => {
+    render(<Reader text="corto medianas" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Lectura rápida' }));
+    await flushLoad();
+    expect(screen.getByRole('button', { name: 'Reproducir lectura' })).toHaveTextContent('corto');
+
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Palabras por minuto' }), { key: 'ArrowRight' });
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    const stage = screen.getByRole('button', { name: 'Reproducir lectura' });
+    expect(stage).toHaveTextContent('corto');
+    expect(stage.querySelector('[data-rsvp-word]')).toHaveClass('text-center');
+
+    fireEvent.click(stage);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('medianas');
+  });
+
   it("GIVEN text mentioning 'Figura 1.1' WHEN those words finish THEN the figure is shown paused and Continuar resumes", async () => {
     const resolveFigure = vi.fn(async (cue: FigureCue) => ({ url: 'blob:fig', label: cue.label }));
     render(<Reader text="Mira Figura 1.1 ahora" resolveFigure={resolveFigure} />);
     fireEvent.click(screen.getByRole('button', { name: 'Lectura rápida' }));
     await flushLoad();
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Reproducir lectura' }));
 
     act(() => {
@@ -129,6 +153,9 @@ describe('RSVP figures', () => {
       await Promise.resolve();
     });
 
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Reproducir lectura' }));
     act(() => {
       vi.advanceTimersByTime(200);

@@ -2,6 +2,7 @@ import { FigureImageCache, figureCacheKey } from '@/lib/rsvp/figures/cache';
 import { captionBox, groupLines, orphanCaptions, type CaptionLine } from '@/lib/rsvp/figures/matchCaption';
 import { imageBoxesFromOps } from '@/lib/rsvp/figures/operatorImages';
 import { chooseCrop } from '@/lib/rsvp/figures/crop';
+import { cropPaintedPage, type BitmapSource } from '@/lib/rsvp/figures/paintBitmap';
 import { textBoxesFromItems } from '@/lib/rsvp/figures/textBoxes';
 import type { Box, FigureCue, FigureImage } from '@/lib/rsvp/figures/types';
 
@@ -14,7 +15,11 @@ interface FigureViewport {
 export interface FigurePage {
   view?: ArrayLike<number>;
   getViewport: (params: { scale: number }) => FigureViewport;
-  render: (params: { canvas: HTMLCanvasElement; viewport: FigureViewport }) => { promise: Promise<unknown> };
+  render: (params: {
+    canvas: HTMLCanvasElement;
+    viewport: FigureViewport;
+    annotationMode?: number;
+  }) => { promise: Promise<unknown> };
   getTextContent: () => Promise<{ items: readonly unknown[] }>;
   getOperatorList?: () => Promise<{ fnArray: ArrayLike<number>; argsArray: ArrayLike<unknown> }>;
 }
@@ -46,26 +51,20 @@ function pageBoxOf(page: FigurePage): Box {
   };
 }
 
-async function paintCrop(page: FigurePage, box: Box): Promise<string | null> {
-  const pageWidth = pageBoxOf(page).width;
+function freshCanvas(): BitmapSource {
+  return document.createElement('canvas') as unknown as BitmapSource;
+}
+
+/** A second pdf.js render fights the page already on screen, so this path is only a fallback. */
+async function renderPageBitmap(page: FigurePage, box: Box): Promise<string | null> {
+  const pageBox = pageBoxOf(page);
+  const pageWidth = pageBox.width;
   const viewport = page.getViewport({ scale: Math.min(1.5, 900 / pageWidth) });
   const full = document.createElement('canvas');
   full.width = Math.max(1, Math.ceil(viewport.width));
   full.height = Math.max(1, Math.ceil(viewport.height));
-  await page.render({ canvas: full, viewport }).promise;
-  const rect = viewport.convertToViewportRectangle([box.x, box.y, box.x + box.width, box.y + box.height]);
-  const left = Math.max(0, Math.min(rect[0], rect[2]));
-  const top = Math.max(0, Math.min(rect[1], rect[3]));
-  const width = Math.max(1, Math.min(full.width - left, Math.abs(rect[2] - rect[0])));
-  const height = Math.max(1, Math.min(full.height - top, Math.abs(rect[3] - rect[1])));
-  const crop = document.createElement('canvas');
-  crop.width = Math.ceil(width);
-  crop.height = Math.ceil(height);
-  const context = crop.getContext('2d');
-  if (!context) return null;
-  context.drawImage(full, left, top, width, height, 0, 0, crop.width, crop.height);
-  const blob = await new Promise<Blob | null>((resolve) => crop.toBlob((value) => resolve(value), 'image/png'));
-  return blob ? URL.createObjectURL(blob) : null;
+  await page.render({ canvas: full, viewport, annotationMode: 0 }).promise;
+  return cropPaintedPage(full as unknown as BitmapSource, pageBox, box.width > 1 && box.height > 1 ? box : pageBox, freshCanvas);
 }
 
 /**
@@ -73,7 +72,11 @@ async function paintCrop(page: FigurePage, box: Box): Promise<string | null> {
  * pdf.js already runs text and operator lists on its worker; this only stitches
  * boxes and paints once per figure, off the RSVP timer.
  */
-export function createPdfFigureResolver(getDoc: () => FigureDocument | null, docKey: string) {
+export function createPdfFigureResolver(
+  getDoc: () => FigureDocument | null,
+  docKey: string,
+  getPaintedPage?: (pageNumber: number) => BitmapSource | null,
+) {
   const images = new FigureImageCache();
   const facts = new Map<number, PageFacts>();
   const loading = new Map<number, Promise<PageFacts | null>>();
@@ -130,6 +133,31 @@ export function createPdfFigureResolver(getDoc: () => FigureDocument | null, doc
     return { pageNumber: around, box: fallback.pageBox };
   }
 
+  async function paintFigure(pageNumber: number, box: Box, around: number): Promise<string | null> {
+    const facts = await loadFacts(pageNumber);
+    const pageBox = facts?.pageBox ?? box;
+    const painted = getPaintedPage?.(pageNumber);
+    if (painted && pageBox) {
+      const fromScreen = await cropPaintedPage(painted, pageBox, box, freshCanvas);
+      if (fromScreen) return fromScreen;
+    }
+    const doc = getDoc();
+    if (doc && pageNumber >= 1 && pageNumber <= doc.numPages) {
+      try {
+        const page = await doc.getPage(pageNumber);
+        const rendered = await renderPageBitmap(page, box);
+        if (rendered) return rendered;
+        const whole = await renderPageBitmap(page, pageBoxOf(page));
+        if (whole) return whole;
+      } catch {
+        // The visible page bitmap below is the last resort.
+      }
+    }
+    const visible = getPaintedPage?.(around) ?? painted;
+    if (visible && pageBox) return cropPaintedPage(visible, pageBox, pageBox, freshCanvas);
+    return null;
+  }
+
   return {
     prefetch(pageNumber: number) {
       if (disposed) return;
@@ -143,10 +171,10 @@ export function createPdfFigureResolver(getDoc: () => FigureDocument | null, doc
       if (cached) return Promise.resolve({ url: cached, label: cue.label });
       return images.memoize(key, async () => {
         const found = await locate(cue, around);
-        const doc = getDoc();
-        if (!found || !doc) throw new Error('figure-missing');
-        const page = await doc.getPage(found.pageNumber);
-        const url = await paintCrop(page, found.box);
+        const pageNumber = found?.pageNumber ?? around;
+        const box = found?.box;
+        const facts = await loadFacts(pageNumber);
+        const url = await paintFigure(pageNumber, box ?? facts?.pageBox ?? { x: 0, y: 0, width: 1, height: 1 }, around);
         if (!url) throw new Error('figure-paint');
         return url;
       }).then(

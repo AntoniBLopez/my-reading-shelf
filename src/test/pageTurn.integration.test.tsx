@@ -110,7 +110,7 @@ describe('GIVEN the reader', () => {
     vi.restoreAllMocks();
   });
 
-  it('WHEN the user swipes left THEN the flip animation runs and the next page is shown', async () => {
+  it('WHEN the user swipes left THEN the page commits without a rigid spin and the next page is shown', async () => {
     render(<Reader />);
     const scene = document.querySelector('.pdf-turn-scene');
     if (!scene) throw new Error('missing scene');
@@ -120,7 +120,8 @@ describe('GIVEN the reader', () => {
     flushFrames();
 
     expect(leaf().classList.contains('pdf-turn-leaf--follow')).toBe(true);
-    expect(leaf().style.transform).toContain('rotateY(');
+    expect(leaf().style.transform).not.toContain('rotateY');
+    expect(document.querySelector('.pdf-page-curl')).toBeNull();
     expect(scene.getAttribute('data-turn')).toBe('next');
     expect(leaf().textContent).toBe('2');
 
@@ -137,7 +138,7 @@ describe('GIVEN the reader', () => {
     pointer('pointerdown', scene, { clientX: 200, clientY: 100 });
     pointer('pointermove', window, { clientX: 160, clientY: 104 });
     flushFrames();
-    expect(leaf().style.transform).toContain('rotateY(');
+    expect(leaf().style.transform).not.toContain('rotateY');
     expect(scene.getAttribute('data-turn')).toBe('next');
 
     pointer('pointerup', window, { clientX: 160, clientY: 104 });

@@ -251,4 +251,28 @@ describe('useRsvp', () => {
     expect(result.current.wpm).toBe(640);
     expect(readStoredWpm()).toBe(640);
   });
+
+  it('should start paused even when tokens are ready', () => {
+    const { result } = renderHook(() => useRsvp(tokenize('uno dos tres')));
+    expect(result.current.playing).toBe(false);
+    expect(result.current.index).toBe(0);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(result.current.playing).toBe(false);
+    expect(result.current.index).toBe(0);
+  });
+
+  it('should not start playback when the speed changes', () => {
+    const { result } = renderHook(() => useRsvp(tokenize('uno dos')));
+    act(() => {
+      result.current.setWpm(520);
+    });
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(result.current.wpm).toBe(520);
+    expect(result.current.playing).toBe(false);
+    expect(result.current.index).toBe(0);
+  });
 });

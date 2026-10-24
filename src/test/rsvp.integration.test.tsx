@@ -69,6 +69,9 @@ describe('GIVEN a PDF page with text', () => {
     );
     await flushLoad();
 
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Reproducir lectura' }));
     const stage = screen.getByRole('button', { name: 'Pausar lectura' });
     expect(stage).toHaveTextContent('En');
