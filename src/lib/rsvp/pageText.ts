@@ -22,14 +22,17 @@ const GAP_EM = 0.18;
 /**
  * One linear pass over PDF text items.
  * Adjacent runs on the same line are concatenated unless a real gap or an
- * explicit space separates them. A hyphen glued to a word at a line break is
- * dropped when the next line starts with a letter.
+ * explicit space separates them. A whitespace-only run is kept as that space
+ * and does not replace the previous glyph. A hyphen glued to a word at a
+ * line break is dropped when the next line starts with a letter.
  */
 export function textItemsToPageText(items: readonly unknown[]): string {
   let out = '';
   let prev: TextRun | null = null;
   let afterEOL = false;
   let emptyEol = 0;
+  /** A whitespace-only run (pdf.js space item, or a text node between inline tags). */
+  let boundarySpace = false;
 
   for (const item of items) {
     const run = readRun(item);
@@ -41,6 +44,18 @@ export function textItemsToPageText(items: readonly unknown[]): string {
       }
       continue;
     }
+    // pdf.js gives the space between words its own item, often with height 0,
+    // so it has no geometry. Keep it as a boundary and leave `prev` on the
+    // last real glyph. A word split with no space never takes this path.
+    if (isBoundarySpace(run.text)) {
+      boundarySpace = true;
+      const breaks = run.text.match(/\n/g)?.length ?? 0;
+      if (run.hasEOL || breaks >= 2) {
+        afterEOL = true;
+        emptyEol = breaks >= 2 ? 2 : 0;
+      }
+      continue;
+    }
 
     if (!prev) {
       out = run.text;
@@ -48,16 +63,23 @@ export function textItemsToPageText(items: readonly unknown[]): string {
       out = appendBlock(out, run.text);
     } else if (afterEOL || isNewLine(prev, run)) {
       out = appendNewLine(out, run.text);
+    } else if (boundarySpace) {
+      out = withSpace(out, run.text);
     } else {
       out = appendSameLine(out, prev, run);
     }
 
+    boundarySpace = false;
     prev = run;
     afterEOL = run.hasEOL;
     emptyEol = 0;
   }
 
   return stripInvisibles(out).replace(/[ \t\u00A0]+/g, ' ').trim();
+}
+
+function isBoundarySpace(text: string): boolean {
+  return text.length > 0 && !/\S/u.test(text);
 }
 
 function stripInvisibles(text: string): string {
@@ -217,21 +239,19 @@ export function extractRenderedPageText(root: ParentNode | null): string {
 
 function runsFromLayer(layer: Element): unknown[] {
   const items: unknown[] = [];
+  // One child walk. Text nodes are emitted as they are, including a space
+  // between em/i/strong/b/span/a. A word split across those tags with no
+  // space becomes adjacent runs and is joined later.
   const visit = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? '';
+      if (text) items.push({ str: text, hasEOL: false });
+      return;
+    }
     if (!(node instanceof Element)) return;
     if (node.classList.contains('endOfContent')) return;
     if (node.tagName === 'BR') {
       items.push({ str: '', hasEOL: true });
-      return;
-    }
-    // pdf.js 6 wraps runs in a marked-content span (display: contents).
-    // The words live in the nested presentation spans, not on the wrapper.
-    if (node.classList.contains('markedContent')) {
-      node.childNodes.forEach(visit);
-      return;
-    }
-    if (node.tagName === 'SPAN') {
-      items.push({ str: node.textContent ?? '', hasEOL: false });
       return;
     }
     node.childNodes.forEach(visit);
