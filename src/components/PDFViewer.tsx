@@ -426,7 +426,7 @@ function PDFViewerComponent({
   }, []);
 
   const { rememberPageText, loadPageText } = useReaderPageText(pdfUrl, pdfDocRef, pinchContentRef);
-  const figures = usePdfFigures(pdfUrl, pdfDocRef);
+  const figures = usePdfFigures(pdfUrl, pdfDocRef, pinchContentRef);
 
   useEffect(() => {
     if (!isOpen) setRsvpOpen(false);

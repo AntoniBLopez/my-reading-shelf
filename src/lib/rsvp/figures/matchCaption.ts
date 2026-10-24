@@ -1,4 +1,4 @@
-import { figureKind, figureKey, figureLabel } from '@/lib/rsvp/figures/references';
+import { figureKind, figureKey, figureLabel, normalizeFigureNumber } from '@/lib/rsvp/figures/references';
 import type { Box, FigureCue } from '@/lib/rsvp/figures/types';
 
 export interface TextBox {
@@ -15,7 +15,7 @@ export interface CaptionLine {
 }
 
 const CAPTION =
-  /^(figura|figure|fig\.?|tabla|table|cuadro|grafico|imagen|image|lamina|plate)\s+(\d+(?:\.\d+)*)\b/;
+  /^(figura|figure|fig\.?|tabla|table|cuadro|grafico|imagen|image|lamina|plate)\s+(\d+(?:[.\-–—]\d+)*)\b/;
 
 export function fold(text: string): string {
   return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -49,7 +49,8 @@ export function matchCaption(line: string): FigureCue | null {
   const match = CAPTION.exec(fold(line));
   if (!match) return null;
   const kind = figureKind(match[1]);
-  const number = match[2];
+  const number = normalizeFigureNumber(match[2]);
+  if (!number) return null;
   return { key: figureKey(kind, number), label: figureLabel(kind, number), kind, number };
 }
 

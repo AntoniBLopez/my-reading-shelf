@@ -133,6 +133,16 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   }, []);
 
   const handleLeafRender = useCallback((page: { pageNumber: number }) => {
+    const slotsNow = slotsRef.current;
+    sceneRef.current?.querySelectorAll('.pdf-turn-leaf canvas, .pdf-turn-under canvas').forEach((node) => {
+      if (!(node instanceof HTMLCanvasElement) || node.closest('.pdf-page-curl')) return;
+      const slot = node.closest('.pdf-turn-leaf')
+        ? slotsNow.leaf
+        : node.closest('.pdf-turn-under--next')
+          ? slotsNow.next
+          : slotsNow.prev;
+      node.dataset.page = String(slot);
+    });
     settle(page.pageNumber);
   }, [settle]);
 
@@ -171,12 +181,12 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         >
           {inBook(slots.prev) && (
             <div className="pdf-turn-under pdf-turn-under--prev" aria-hidden>
-              <Page {...pageProps} devicePixelRatio={neighborPixelRatio} key={`${themeKey}-${slots.prev}`} pageNumber={slots.prev} renderTextLayer={false} renderAnnotationLayer={false} />
+              <Page {...pageProps} devicePixelRatio={neighborPixelRatio} key={`${themeKey}-${slots.prev}`} pageNumber={slots.prev} renderTextLayer={false} renderAnnotationLayer={false} onRenderSuccess={handleLeafRender} />
             </div>
           )}
           {inBook(slots.next) && (
             <div className="pdf-turn-under pdf-turn-under--next" aria-hidden>
-              <Page {...pageProps} devicePixelRatio={neighborPixelRatio} key={`${themeKey}-${slots.next}`} pageNumber={slots.next} renderTextLayer={false} renderAnnotationLayer={false} />
+              <Page {...pageProps} devicePixelRatio={neighborPixelRatio} key={`${themeKey}-${slots.next}`} pageNumber={slots.next} renderTextLayer={false} renderAnnotationLayer={false} onRenderSuccess={handleLeafRender} />
             </div>
           )}
           <div ref={leafRef} className="pdf-turn-leaf">

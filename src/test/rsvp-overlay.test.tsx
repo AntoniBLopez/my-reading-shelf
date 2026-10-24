@@ -11,14 +11,15 @@ async function flushLoad() {
 }
 
 describe('RsvpWord', () => {
-  it('renders the pivot pieces with no gap between them', () => {
+  it('should center the whole word regardless of pivot position', () => {
     const { container } = render(<RsvpWord word="dimension" orpIndex={2} />);
-    const grid = container.firstElementChild;
-    expect(grid).not.toBeNull();
-    const stray = [...grid!.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE);
-    expect(stray).toEqual([]);
-    expect(grid!.textContent).toBe('dimension');
-    expect([...grid!.children].map((node) => node.textContent)).toEqual(['di', 'm', 'ension']);
+    const word = container.querySelector('[data-rsvp-word]');
+    expect(word).not.toBeNull();
+    expect(word).toHaveClass('text-center');
+    expect((word as HTMLElement).style.transform).toBe('');
+    expect(word?.textContent).toBe('dimension');
+    expect(word?.querySelector('.text-primary')).toHaveTextContent('m');
+    expect(word?.querySelector('[style*="translate"]')).toBeNull();
   });
 });
 
@@ -37,7 +38,7 @@ describe('RsvpOverlay', () => {
     vi.useRealTimers();
   });
 
-  it('locks the recognition letter in the center and pauses from the word area', async () => {
+  it('GIVEN consecutive words of different lengths WHEN each is shown THEN the whole word is centered', async () => {
     render(
       <RsvpOverlay
         pageNumber={3}
@@ -50,18 +51,33 @@ describe('RsvpOverlay', () => {
     await flushLoad();
 
     const stage = screen.getByRole('button', { name: 'Reproducir lectura' });
-    expect(stage.querySelector('.text-primary')).toHaveTextContent('o');
+    const shown = stage.querySelector('[data-rsvp-word]');
+    expect(shown).toHaveClass('text-center');
+    expect(shown).toHaveTextContent('Hola');
+    expect(shown?.querySelector('.text-primary')).toHaveTextContent('o');
+    expect((shown as HTMLElement).style.transform).toBe('');
     expect(screen.getByText('Pág. 3')).toBeInTheDocument();
 
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     fireEvent.click(stage);
-    const playing = screen.getByRole('button', { name: 'Pausar lectura' });
-    fireEvent.click(playing);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    const longer = screen.getByRole('button', { name: 'Pausar lectura' }).querySelector('[data-rsvp-word]');
+    expect(longer).toHaveTextContent('mundo');
+    expect(longer).toHaveClass('text-center');
+    expect((longer as HTMLElement).style.transform).toBe('');
+    expect(longer?.querySelector('.text-primary')).toHaveTextContent('u');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar lectura' }));
     expect(screen.getByRole('button', { name: 'Reproducir lectura' })).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(screen.getByRole('button', { name: 'Reproducir lectura' }).querySelector('.text-primary')).toHaveTextContent('o');
+    expect(screen.getByRole('button', { name: 'Reproducir lectura' }).querySelector('.text-primary')).toHaveTextContent('u');
   });
 
   it('stops at the end of the page and continues on the next one', async () => {
@@ -77,6 +93,9 @@ describe('RsvpOverlay', () => {
       />,
     );
     await flushLoad();
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Reproducir lectura' }));
 
     act(() => {

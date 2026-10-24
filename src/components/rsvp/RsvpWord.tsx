@@ -4,9 +4,8 @@ interface RsvpWordProps {
 }
 
 /**
- * One word. The pivot letter is the middle grid column, so it stays put.
- * Side columns share the leftover width equally; text grows away from the pivot.
- * Spans are adjacent so JSX indentation cannot insert a space between letters.
+ * The whole word sits in the center of the stage.
+ * The focal letter keeps its color, and nothing is shifted to pin that letter to the middle.
  */
 export function RsvpWord({ word, orpIndex }: RsvpWordProps) {
   const pivot = word ? Math.max(0, Math.min(orpIndex, word.length - 1)) : 0;
@@ -15,17 +14,15 @@ export function RsvpWord({ word, orpIndex }: RsvpWordProps) {
   const after = word.slice(pivot + 1);
 
   return (
-    <div
-      className="grid w-full items-baseline font-medium leading-none text-foreground"
+    <p
+      data-rsvp-word
+      className="w-full text-center font-medium leading-none text-foreground"
       style={{
-        gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
         fontSize: 'clamp(1.35rem, 8vw, 4.75rem)',
         letterSpacing: '0px',
-        fontKerning: 'none',
-        fontVariantLigatures: 'none',
       }}
     >
-      <span className="block min-w-0 text-right">{before}</span><span className="block text-center text-primary" style={{ paddingInline: '0.045em' }}>{letter}</span><span className="block min-w-0 text-left">{after}</span>
-    </div>
+      {before}<span className="text-primary">{letter}</span>{after}
+    </p>
   );
 }

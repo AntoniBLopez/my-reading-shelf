@@ -4,7 +4,12 @@ import App from "./App.tsx";
 import "./index.css";
 
 if (import.meta.env.PROD) {
-  registerSW({ immediate: true });
+  registerSW({
+    immediate: true,
+    onRegisteredSW(_url, registration) {
+      void registration?.update();
+    },
+  });
 } else if ("serviceWorker" in navigator) {
   // Prevent stale Workbox service workers from intercepting Vite dev requests.
   void navigator.serviceWorker.getRegistrations().then((registrations) => {

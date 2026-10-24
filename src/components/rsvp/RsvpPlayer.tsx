@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -36,6 +36,11 @@ export function RsvpPlayer({
   });
   const rsvp = useRsvp(tokens, { autoPlay, beforeAdvance: figures.beforeAdvance });
   const { toggle, step, index, total } = rsvp;
+  const [stageArmed, setStageArmed] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setStageArmed(true), 450);
+    return () => window.clearTimeout(timer);
+  }, []);
   const { figure, continueReading, dismiss } = figures;
 
   const resume = useCallback(
@@ -100,7 +105,10 @@ export function RsvpPlayer({
           role="button"
           tabIndex={0}
           className="flex flex-1 cursor-pointer select-none items-center justify-center px-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={toggle}
+          onClick={() => {
+            if (!stageArmed) return;
+            toggle();
+          }}
           aria-label={rsvp.playing ? 'Pausar lectura' : 'Reproducir lectura'}
         >
           <div className="w-full max-w-3xl">

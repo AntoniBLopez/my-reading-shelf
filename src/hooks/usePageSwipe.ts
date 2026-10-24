@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
-import { dragProgress, flipPose, flipTransform, grabRatio, type FlipPose } from '@/lib/pageTurnFlip';
+import { createPageCurl, type PageCurlSession } from '@/components/pdfPageCurl';
 import {
   directionFromDx,
   gesturePhase,
-  GLIDE_MS,
   isEdgeBlocked,
   nextVelocity,
   shouldCommitTurn,
@@ -38,15 +37,7 @@ type UsePageSwipeArgs = {
   onActive?: (active: boolean) => void;
 };
 
-type PendingPaint = {
-  pose: FlipPose;
-  dir: TurnDirection | null;
-};
-
 const SETTLE_FALLBACK_MS = 480;
-function prefersReducedMotion() {
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-}
 
 export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCommit, onActive }: UsePageSwipeArgs) {
   const pageRef = useRef(page);
@@ -65,24 +56,18 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   const pointersRef = useRef(new Set<number>());
   const lockRef = useRef(false);
   const pendingTargetRef = useRef<number | null>(null);
-  const glideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef(0);
-  const pendingPaintRef = useRef<PendingPaint | null>(null);
+  const pendingDirRef = useRef<TurnDirection | null>(null);
   const touchArmedRef = useRef(false);
-  const paintModeRef = useRef<'follow' | 'glide' | 'rest'>('rest');
+  const curlRef = useRef<PageCurlSession | null>(null);
+  const curlGenRef = useRef(0);
+  const launchingRef = useRef(false);
 
   const blockTouchRef = useRef((event: TouchEvent) => {
     if (!gestureRef.current?.active || !event.cancelable) return;
     event.preventDefault();
   });
-
-  const clearGlide = () => {
-    if (glideTimerRef.current != null) {
-      clearTimeout(glideTimerRef.current);
-      glideTimerRef.current = null;
-    }
-  };
 
   const clearSettle = () => {
     if (settleTimerRef.current != null) {
@@ -94,27 +79,16 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   const cancelFollow = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
-    pendingPaintRef.current = null;
+    pendingDirRef.current = null;
   };
 
-  const paint = (pose: FlipPose | null, mode: 'follow' | 'glide' | 'rest') => {
-    const leaf = leafRef.current;
-    if (!leaf) return;
-    if (paintModeRef.current !== mode) {
-      paintModeRef.current = mode;
-      leaf.classList.toggle('pdf-turn-leaf--follow', mode === 'follow');
-      leaf.classList.toggle('pdf-turn-leaf--glide', mode === 'glide');
-    }
-    const scene = sceneRef.current;
-    if (!pose || mode === 'rest') {
-      leaf.style.transform = '';
-      leaf.style.transformOrigin = '';
-      scene?.style.removeProperty('--turn-shade');
-      return;
-    }
-    leaf.style.transformOrigin = pose.origin;
-    leaf.style.transform = flipTransform(pose);
-    scene?.style.setProperty('--turn-shade', pose.shade.toFixed(3));
+  const destroyCurl = () => {
+    curlGenRef.current += 1;
+    launchingRef.current = false;
+    curlRef.current?.destroy();
+    curlRef.current = null;
+    sceneRef.current?.querySelectorAll('.pdf-page-curl').forEach((node) => node.remove());
+    leafRef.current?.classList.remove('pdf-turn-leaf--covered');
   };
 
   const setTurn = (dir: TurnDirection | null) => {
@@ -124,19 +98,23 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     else delete scene.dataset.turn;
   };
 
-  const drawFollow = () => {
-    rafRef.current = 0;
-    const pending = pendingPaintRef.current;
-    if (!pending) return;
-    pendingPaintRef.current = null;
-    setTurn(pending.dir);
-    paint(pending.pose, 'follow');
+  const markFollow = (following: boolean) => {
+    const leaf = leafRef.current;
+    if (!leaf) return;
+    leaf.classList.toggle('pdf-turn-leaf--follow', following);
+    if (!following) {
+      leaf.style.transform = '';
+      leaf.style.transformOrigin = '';
+    }
   };
 
-  const scheduleFollow = (pose: FlipPose, dir: TurnDirection | null) => {
-    pendingPaintRef.current = { pose, dir };
-    if (rafRef.current) return;
-    rafRef.current = requestAnimationFrame(drawFollow);
+  const paintedCanvas = (pageNumber: number): HTMLCanvasElement | null => {
+    const scene = sceneRef.current;
+    if (!scene) return null;
+    const stamped = scene.querySelector(`canvas[data-page="${pageNumber}"]`);
+    if (!(stamped instanceof HTMLCanvasElement) || stamped.closest('.pdf-page-curl')) return null;
+    if (stamped.width < 2 || stamped.height < 2) return null;
+    return stamped;
   };
 
   const disarmTouch = () => {
@@ -163,7 +141,8 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     if (pendingTargetRef.current == null) return;
     pendingTargetRef.current = null;
     clearSettle();
-    paint(null, 'rest');
+    destroyCurl();
+    markFollow(false);
     setTurn(null);
     lockRef.current = false;
     notifyActive(false);
@@ -173,6 +152,8 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     if (pendingTargetRef.current == null) return;
     if (paintedPage != null && paintedPage !== pendingTargetRef.current) return;
     finishSettle();
+    // finishSettle closes over the latest refs. settle is stable for the page stage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const finishCommit = (target: number) => {
@@ -186,38 +167,94 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     settleTimerRef.current = setTimeout(finishSettle, SETTLE_FALLBACK_MS);
   };
 
-  const glideTo = (pose: FlipPose, then: () => void) => {
-    clearGlide();
-    if (prefersReducedMotion()) {
-      paint(null, 'rest');
-      then();
-      return;
-    }
-    paint(pose, 'glide');
-    const leaf = leafRef.current;
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      leaf?.removeEventListener('transitionend', finish);
-      clearGlide();
-      then();
-    };
-    leaf?.addEventListener('transitionend', finish);
-    glideTimerRef.current = setTimeout(finish, GLIDE_MS + 40);
-  };
-
   const resetSheet = () => {
     cancelFollow();
     disarmTouch();
-    clearGlide();
     clearSettle();
     pendingTargetRef.current = null;
-    paint(null, 'rest');
+    destroyCurl();
+    markFollow(false);
     setTurn(null);
     gestureRef.current = null;
     lockRef.current = false;
     notifyActive(false);
+  };
+
+  const ensureCurl = (dir: TurnDirection, from: number, target: number, auto = false) => {
+    if (curlRef.current || launchingRef.current) return true;
+    const scene = sceneRef.current;
+    const current = paintedCanvas(from);
+    const other = paintedCanvas(target);
+    const gesture = gestureRef.current;
+    if (!scene || !current || !other || current === other) return false;
+    const width = Math.max(1, gesture?.width || leafRef.current?.clientWidth || 1);
+    const height = Math.max(1, gesture?.height || leafRef.current?.clientHeight || 1);
+    const gen = ++curlGenRef.current;
+    launchingRef.current = true;
+    void createPageCurl({
+      scene,
+      width,
+      height,
+      direction: dir,
+      current,
+      other,
+      invert: document.documentElement.classList.contains('dark'),
+      onVisible: () => {
+        if (gen !== curlGenRef.current) return;
+        leafRef.current?.classList.add('pdf-turn-leaf--covered');
+      },
+      onResult: (committed) => {
+        if (gen !== curlGenRef.current) return;
+        curlRef.current = null;
+        launchingRef.current = false;
+        if (!committed) {
+          resetSheet();
+          return;
+        }
+        if (pendingTargetRef.current == null) finishCommit(target);
+      },
+    }).then((session) => {
+      if (gen !== curlGenRef.current) {
+        session.destroy();
+        return;
+      }
+      curlRef.current = session;
+      launchingRef.current = false;
+      const live = gestureRef.current;
+      if (auto || !live?.active) session.release(1, true);
+      else session.move(live.lastX, live.lastY);
+    }).catch(() => {
+      if (gen !== curlGenRef.current) return;
+      launchingRef.current = false;
+      if (auto && pendingTargetRef.current == null) finishCommit(target);
+    });
+    return true;
+  };
+
+  const drawFollow = () => {
+    rafRef.current = 0;
+    const dir = pendingDirRef.current;
+    const gesture = gestureRef.current;
+    if (!gesture?.active) return;
+    setTurn(dir);
+    markFollow(true);
+    const leaf = leafRef.current;
+    if (leaf) {
+      leaf.style.transform = '';
+      leaf.style.transformOrigin = '';
+    }
+    if (dir && gesture.dir) {
+      const from = pageRef.current;
+      const target = targetPage(from, gesture.dir);
+      ensureCurl(gesture.dir, from, target);
+      curlRef.current?.move(gesture.lastX, gesture.lastY);
+    }
+  };
+
+  const scheduleFollow = (dir: TurnDirection | null) => {
+    pendingDirRef.current = dir;
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(drawFollow);
   };
 
   const releaseGesture = () => {
@@ -233,13 +270,14 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     const dx = gesture.lastX - gesture.startX;
     const progress = turnProgress(dx, gesture.width, gesture.dir);
     const commit = shouldCommitTurn({ progress, vx: gesture.vx, dir: gesture.dir, blocked });
-    lockRef.current = true;
-    const grabY = grabRatio(gesture.lastY, gesture.top, gesture.height);
     const target = targetPage(pageRef.current, gesture.dir);
-    glideTo(flipPose(commit ? 1 : 0, gesture.dir, grabY), () => {
-      if (commit) finishCommit(target);
-      else resetSheet();
-    });
+    if (curlRef.current) {
+      lockRef.current = true;
+      curlRef.current.release(progress, commit && !blocked);
+      return;
+    }
+    if (commit && !blocked) finishCommit(target);
+    else resetSheet();
   };
 
   useEffect(() => {
@@ -272,9 +310,7 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       gesture.lastY = event.clientY;
       gesture.lastT = now;
       const blocked = isEdgeBlocked(gesture.dir, pageRef.current, pageCountRef.current);
-      const grabY = grabRatio(event.clientY, gesture.top, gesture.height);
-      const progress = dragProgress(dx, gesture.width, gesture.dir, blocked);
-      scheduleFollow(flipPose(progress, gesture.dir, grabY), blocked ? null : gesture.dir);
+      scheduleFollow(blocked ? null : gesture.dir);
     };
     const onUp = (event: PointerEvent) => {
       pointersRef.current.delete(event.pointerId);
@@ -288,6 +324,7 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     return () => {
       cancelFollow();
       disarmTouch();
+      curlRef.current?.destroy();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -323,22 +360,27 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       height: Math.max(1, box?.height || 1),
       top: box?.top || 0,
     };
+    // The gesture helpers close over refs and stay correct for the mounted scene.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leafRef]);
 
   const turn = useCallback((dir: TurnDirection) => {
     if (lockRef.current || gestureRef.current?.active) return;
     if (!enabledRef.current()) return;
     if (isEdgeBlocked(dir, pageRef.current, pageCountRef.current)) return;
-    const target = targetPage(pageRef.current, dir);
+    const from = pageRef.current;
+    const target = targetPage(from, dir);
     lockRef.current = true;
     notifyActive(true);
     setTurn(dir);
-    glideTo(flipPose(1, dir, 0.5), () => finishCommit(target));
+    if (!ensureCurl(dir, from, target, true)) finishCommit(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const cancel = useCallback(() => {
     if (lockRef.current && !gestureRef.current) return;
     resetSheet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isLocked = useCallback(

@@ -42,7 +42,7 @@ export class FigureImageCache {
   revokeAll(revoke: (url: string) => void = URL.revokeObjectURL): void {
     for (const url of this.urls.values()) {
       try {
-        revoke(url);
+        if (url.startsWith('blob:')) revoke(url);
       } catch {
         // The URL may already have been revoked with the document.
       }

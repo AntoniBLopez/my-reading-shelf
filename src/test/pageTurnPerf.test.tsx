@@ -156,8 +156,8 @@ describe('page turn performance', () => {
     expect(leaf.getAttribute('style') ?? '').not.toContain('rotateY');
 
     flushFrames();
-    const angle = Number(leaf.style.transform.match(/rotateY\(([-\d.]+)deg\)/)?.[1]);
-    expect(angle).toBeCloseTo(-(180 / 300) * 180, 1);
+    expect(leaf.style.transform).not.toContain('rotateY');
+    expect(scene.getAttribute('data-turn')).toBe('next');
     expect(pageRender).not.toHaveBeenCalled();
   });
 

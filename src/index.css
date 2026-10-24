@@ -250,6 +250,12 @@
   filter: invert(1) !important;
 }
 
+/* The curl canvas paints its own dark page. Leaving invert on turns its black shadows white. */
+.dark .pdf-viewer-pdf-wrapper .pdf-page-curl canvas,
+.pdf-viewer-pdf-wrapper[data-theme='dark'] .pdf-page-curl canvas {
+  filter: none !important;
+}
+
 .dark .pdf-viewer-pdf-wrapper[data-show-border="true"] .react-pdf__Document {
   border: 1px solid rgb(82 82 82 / 0.4) !important;
 }
@@ -269,10 +275,8 @@
 
 .pdf-turn-scene {
   position: relative;
-  /* Visible so the 3D sheet is not flattened by a clipping ancestor. */
-  overflow: visible;
+  overflow: hidden;
   touch-action: pan-y;
-  perspective: 1400px;
 }
 
 .pdf-turn-scene canvas,
@@ -331,75 +335,64 @@
 .pdf-turn-leaf {
   position: relative;
   z-index: 2;
-  transform-style: preserve-3d;
 }
 
-.pdf-turn-face {
-  transform-style: preserve-3d;
+.pdf-turn-leaf--covered {
+  visibility: hidden;
+}
+
+/* StPageFlip sets .stf__parent { position: relative } which would stack extra pages in the scroll. */
+.pdf-page-curl:not(.pdf-page-curl--ready),
+.pdf-page-curl:not(.pdf-page-curl--ready).stf__parent {
+  visibility: hidden;
+}
+
+/* Portrait prev folds the hidden left page. Mirror a forward curl so the sheet peels off the left edge. */
+.pdf-page-curl--mirror canvas {
+  transform: scaleX(-1);
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.pdf-page-curl,
+.pdf-page-curl.stf__parent {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 30;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.pdf-page-curl canvas {
+  will-change: transform;
+}
+
+.pdf-turn-scene[data-turn] .pdf-turn-leaf {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
 
-.pdf-turn-face--back {
-  position: absolute;
-  inset: 0;
-  transform: rotateY(180deg);
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.14), transparent 18%),
-    #f4efe6;
-}
-
-.dark .pdf-turn-face--back,
-.pdf-viewer-pdf-wrapper[data-theme='dark'] .pdf-turn-face--back {
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 18%),
-    #141414;
-}
-
-.pdf-turn-crease {
+.pdf-turn-shade {
   position: absolute;
   inset: 0;
   z-index: 4;
   pointer-events: none;
   opacity: var(--turn-shade, 0);
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.38), transparent 24%);
 }
 
-.pdf-turn-scene[data-turn='prev'] .pdf-turn-crease {
-  background: linear-gradient(270deg, rgba(0, 0, 0, 0.38), transparent 24%);
+.pdf-turn-scene[data-turn='next'] .pdf-turn-shade {
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.5), transparent 34%);
 }
 
-.pdf-turn-leaf--follow {
-  will-change: transform;
-  transition: none;
-}
-
-.pdf-turn-leaf--glide {
-  will-change: transform;
-  transition: transform 160ms cubic-bezier(0.2, 0.85, 0.2, 1);
-}
-
-/* Text and annotation spans are not needed while the bitmap is sliding. */
-.pdf-turn-leaf--follow .react-pdf__Page__textContent,
-.pdf-turn-leaf--follow .react-pdf__Page__annotations,
-.pdf-turn-leaf--glide .react-pdf__Page__textContent,
-.pdf-turn-leaf--glide .react-pdf__Page__annotations {
-  visibility: hidden;
-}
-
-.pdf-viewer-pdf-wrapper:has(.pdf-turn-leaf--follow) .shadow-lg,
-.pdf-viewer-pdf-wrapper:has(.pdf-turn-leaf--glide) .shadow-lg {
-  box-shadow: none !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pdf-turn-leaf--glide {
-    transition: none;
-  }
-}
-
-.pdf-turn-scene[data-turn] .pdf-turn-leaf {
-  transform-style: preserve-3d;
+.pdf-turn-scene[data-turn='prev'] .pdf-turn-shade {
+  background: linear-gradient(270deg, rgba(0, 0, 0, 0.5), transparent 34%);
 }
 
 /* Last sign-in method: brand color on the sides only, transparent top and bottom, soft side glow. */
