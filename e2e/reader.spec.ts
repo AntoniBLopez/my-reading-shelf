@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const ARTIFACTS = '/opt/cursor/artifacts';
@@ -34,7 +34,7 @@ async function samplePdf(): Promise<Uint8Array> {
   return pdf.save();
 }
 
-test('GIVEN an open book WHEN RSVP and a page drag run THEN playback stays paused, the figure paints, and the page curls', async ({ page }) => {
+async function openFigureBook(page: Page) {
   mkdirSync(ARTIFACTS, { recursive: true });
   await page.addInitScript(() => {
     const maps = Map.prototype as Map<unknown, unknown> & {
@@ -124,6 +124,11 @@ test('GIVEN an open book WHEN RSVP and a page drag run THEN playback stays pause
   await page.goto('/?tab=library&book=book-fig');
   const canvas = page.locator('canvas[data-page="1"]');
   await expect(canvas).toBeVisible({ timeout: 30_000 });
+}
+
+test('GIVEN an open book WHEN RSVP and a page drag run THEN playback stays paused, the figure paints, and the page curls', async ({ page }) => {
+  await openFigureBook(page);
+  const canvas = page.locator('canvas[data-page="1"]');
 
   await page.getByRole('button', { name: 'Lectura rápida' }).click();
   const stage = page.getByRole('button', { name: 'Reproducir lectura' });
@@ -187,4 +192,42 @@ test('GIVEN an open book WHEN RSVP and a page drag run THEN playback stays pause
   await expect(page.locator('.pdf-turn-leaf')).not.toHaveAttribute('style', /rotateY/);
   await page.screenshot({ path: `${ARTIFACTS}/page-curl-mid-drag.png` });
   await page.mouse.up();
+});
+
+test('GIVEN the reader in fullscreen WHEN tapping the rayo THEN RSVP stays inside the fullscreen element', async ({ page }) => {
+  await openFigureBook(page);
+  await page.getByRole('button', { name: 'Pantalla completa' }).click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement?.className ?? '')).toContain('flex');
+  const fullscreen = await page.evaluate(() => document.fullscreenElement != null);
+  expect(fullscreen).toBe(true);
+
+  await page.getByRole('button', { name: 'Lectura rápida' }).click();
+  const stage = page.getByRole('button', { name: 'Reproducir lectura' });
+  await expect(stage).toBeVisible();
+  await expect(stage).toContainText('Ve');
+  const inside = await stage.evaluate((node) => {
+    const root = document.fullscreenElement;
+    return !!root && root.contains(node);
+  });
+  expect(inside).toBe(true);
+  await page.screenshot({ path: `${ARTIFACTS}/rsvp-fullscreen.png` });
+
+  await page.getByRole('slider', { name: 'Palabras por minuto' }).click();
+  await page.waitForTimeout(1500);
+  await expect(stage).toContainText('Ve');
+
+  await page.getByRole('button', { name: 'Reproducir', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'Figura 1.1' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Continuar' })).toBeVisible();
+  const stillFullscreen = await page.evaluate(() => {
+    const root = document.fullscreenElement;
+    const figure = document.querySelector('[aria-label="Lectura rápida"][role="dialog"]');
+    return !!root && !!figure && root.contains(figure);
+  });
+  expect(stillFullscreen).toBe(true);
+
+  await page.getByRole('button', { name: 'Cerrar' }).click();
+  await expect(stage).toHaveCount(0);
+  expect(await page.evaluate(() => document.fullscreenElement != null)).toBe(true);
+  await page.screenshot({ path: `${ARTIFACTS}/rsvp-fullscreen-closed.png` });
 });

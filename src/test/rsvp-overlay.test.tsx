@@ -80,7 +80,7 @@ describe('RsvpOverlay', () => {
     expect(screen.getByRole('button', { name: 'Reproducir lectura' }).querySelector('.text-primary')).toHaveTextContent('u');
   });
 
-  it('stops at the end of the page and continues on the next one', async () => {
+  it('GIVEN the last word of a page WHEN the reader finishes THEN the next page can continue', async () => {
     const onNextPage = vi.fn();
     const loadPageText = vi.fn(async (page: number) => (page === 1 ? 'uno dos.' : 'sigue'));
     const view = render(
@@ -123,7 +123,7 @@ describe('RsvpOverlay', () => {
     expect(stage).toHaveTextContent('sigue');
   });
 
-  it('closes with Escape without leaving the reader', async () => {
+  it('GIVEN RSVP is open WHEN Escape is pressed THEN the overlay closes and the reader stays', async () => {
     const onClose = vi.fn();
     render(
       <RsvpOverlay

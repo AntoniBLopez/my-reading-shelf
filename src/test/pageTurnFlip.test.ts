@@ -36,7 +36,7 @@ describe('page curl geometry', () => {
 });
 
 describe('GIVEN a page peeled from the lower right', () => {
-  it('WHEN the finger is halfway across THEN the crease is a diagonal fold', () => {
+  it('should place the crease on a diagonal when the finger is halfway across', () => {
     const fold = curlFold(300, 400, 150, 300, 'next');
     expect(fold.corner).toBe('bottom');
     expect(fold.progress).toBeCloseTo(0.5);

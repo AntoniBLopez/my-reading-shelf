@@ -1007,6 +1007,7 @@ function PDFViewerComponent({
                 size="icon"
                 className="h-8 w-8 shrink-0"
                 onClick={toggleFullscreen}
+                aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
                 title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
               >
                 {isFullscreen ? (
@@ -1151,6 +1152,7 @@ function PDFViewerComponent({
             hasNextPage={numPages > 0 && pageNumber < numPages}
             loadPageText={loadPageText}
             onNextPage={() => goToPage(pageNumber + 1)}
+            portalRoot={isFullscreen ? fullscreenRef.current : null}
             onClose={() => setRsvpOpen(false)}
             resolveFigure={figures.resolveFigure}
             listOrphans={figures.listOrphans}

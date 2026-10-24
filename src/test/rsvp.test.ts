@@ -11,7 +11,7 @@ describe('rsvp tokenizer and timing', () => {
     localStorage.clear();
   });
 
-  it('places the recognition point about a third of the way in', () => {
+  it('should place the recognition point about a third of the way into the word', () => {
     expect(orpIndex('a')).toBe(0);
     expect(orpIndex('hola')).toBe(1);
     expect(orpIndex('¿Hola')).toBe(2);
@@ -22,7 +22,7 @@ describe('rsvp tokenizer and timing', () => {
     expect(orpIndex('hello,')).toBe(1);
   });
 
-  it('splits words and keeps punctuation for the pause', () => {
+  it('should split words and keep punctuation for the pause', () => {
     const tokens = tokenize('Hola, mundo.\n¿Listo?');
     expect(tokens.map((token) => token.word)).toEqual(['Hola,', 'mundo.', '¿Listo?']);
     expect(tokens[0].delayFactor).toBe(1.5);
@@ -31,7 +31,7 @@ describe('rsvp tokenizer and timing', () => {
     expect(tokens[2].orpIndex).toBe(2);
   });
 
-  it('holds punctuation and long words a little longer', () => {
+  it('should hold punctuation and long words a little longer', () => {
     expect(delayFactor('casa')).toBe(1);
     expect(delayFactor('casa,')).toBe(1.5);
     expect(delayFactor('fin.')).toBe(2);
@@ -44,7 +44,7 @@ describe('rsvp tokenizer and timing', () => {
     expect(wordDelayMs(50, 1)).toBe(600);
   });
 
-  it('remembers words per minute between visits', () => {
+  it('should remember words per minute between visits', () => {
     expect(readStoredWpm()).toBe(300);
     expect(storeWpm(450)).toBe(450);
     expect(localStorage.getItem(RSVP_WPM_STORAGE_KEY)).toBe('450');
@@ -53,7 +53,7 @@ describe('rsvp tokenizer and timing', () => {
     expect(storeWpm(20)).toBe(100);
   });
 
-  it('joins PDF lines and drops a hyphen that only breaks a word', () => {
+  it('should join PDF lines and drop a hyphen that only breaks a word', () => {
     const text = textItemsToPageText([
       { str: 'La lectu-', hasEOL: true },
       { str: 'ra rápida', hasEOL: true },
@@ -63,7 +63,7 @@ describe('rsvp tokenizer and timing', () => {
     expect(text).toBe('La lectura rápida sigue.');
   });
 
-  it('joins a hyphen glued to a word at a line break and keeps a mid-line hyphen', () => {
+  it('should join a hyphen glued to a word at a line break and keep a mid-line hyphen', () => {
     const line = (str: string, x: number, y: number, width: number, hasEOL = false) => ({
       str,
       hasEOL,
@@ -100,7 +100,7 @@ describe('rsvp tokenizer and timing', () => {
     ])).toBe('sys - tems');
   });
 
-  it('concatenates text runs that are only split by font or kerning', () => {
+  it('should concatenate text runs that are only split by font or kerning', () => {
     const run = (str: string, x: number, width: number) => ({
       str,
       hasEOL: false,
@@ -116,7 +116,7 @@ describe('rsvp tokenizer and timing', () => {
     expect(textItemsToPageText([run('it', 10, 10), run('of', 28, 12)])).toBe('it of');
   });
 
-  it('trims tokens and drops soft hyphens, zero-width characters, and blanks', () => {
+  it('should trim tokens and drop soft hyphens, zero-width characters, and blanks', () => {
     const tokens = tokenize('  it\u00A0 of \u200B cri\u00ADteria \u00AD  ');
     expect(tokens.map((token) => token.word)).toEqual(['it', 'of', 'criteria']);
     expect(tokens[0].orpIndex).toBe(1);
@@ -150,7 +150,7 @@ describe('rsvp tokenizer and timing', () => {
     expect(extractRenderedPageText(root)).toBe('En esta página hay texto.');
   });
 
-  it('reads the text layer the page rendered', () => {
+  it('should read the text layer the page rendered', () => {
     const root = document.createElement('div');
     root.innerHTML = `
       <div class="pdf-turn-leaf">
@@ -176,7 +176,7 @@ describe('useRsvp', () => {
     vi.useRealTimers();
   });
 
-  it('plays through a page, pauses on demand, and stops at the end', () => {
+  it('should play through a page, pause on demand, and stop at the end', () => {
     const tokens = tokenize('uno dos tres.');
     const { result } = renderHook(() => useRsvp(tokens, { autoPlay: true }));
 
@@ -214,7 +214,7 @@ describe('useRsvp', () => {
     expect(result.current.progress).toBe(100);
   });
 
-  it('steps one word and restarts from the first', () => {
+  it('should step one word and restart from the first', () => {
     const tokens = tokenize('alpha beta gamma');
     const { result } = renderHook(() => useRsvp(tokens));
 
@@ -243,7 +243,7 @@ describe('useRsvp', () => {
     expect(result.current.playing).toBe(true);
   });
 
-  it('stores the chosen speed', () => {
+  it('should store the chosen speed', () => {
     const { result } = renderHook(() => useRsvp(tokenize('hola')));
     act(() => {
       result.current.setWpm(640);

@@ -51,7 +51,7 @@ describe('GIVEN a PDF page with text', () => {
     vi.useRealTimers();
   });
 
-  it('WHEN RSVP mode starts THEN words are shown one by one', async () => {
+  it('GIVEN a PDF page with text WHEN RSVP mode starts THEN words are shown one by one', async () => {
     const doc = await getDocument({ data: pdfWithText(SENTENCE) }).promise;
     const text = await readReaderPageText(doc, 1, null);
     expect(text).toContain('pagina');
@@ -76,16 +76,19 @@ describe('GIVEN a PDF page with text', () => {
     const stage = screen.getByRole('button', { name: 'Pausar lectura' });
     expect(stage).toHaveTextContent('En');
     expect(stage).not.toHaveTextContent('pagina');
+    expect(stage.querySelector('.text-primary')).toHaveTextContent('n');
 
     act(() => {
       vi.advanceTimersByTime(200);
     });
     expect(stage).toHaveTextContent('esta');
     expect(stage).not.toHaveTextContent('En');
+    expect(stage.querySelector('.text-primary')).toHaveTextContent('s');
 
     act(() => {
       vi.advanceTimersByTime(200);
     });
     expect(stage).toHaveTextContent('pagina');
+    expect(stage.querySelector('.text-primary')).toHaveTextContent('g');
   });
 });

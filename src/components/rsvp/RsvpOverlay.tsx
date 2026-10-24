@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { RsvpPlayer } from '@/components/rsvp/RsvpPlayer';
 import { attachFigureCues } from '@/lib/rsvp/figures/references';
 import type { FigureCue, FigureImage } from '@/lib/rsvp/figures/types';
+import { fullscreenPortalTarget } from '@/lib/fullscreenPortal';
 import { tokenize } from '@/lib/rsvp/tokenize';
 
 interface RsvpOverlayProps {
@@ -16,6 +18,8 @@ interface RsvpOverlayProps {
   resolveFigure?: (cue: FigureCue, pageNumber: number) => Promise<FigureImage | null>;
   listOrphans?: (pageNumber: number, mentioned: ReadonlySet<string>) => Promise<FigureCue[]>;
   prefetchFigures?: (pageNumber: number) => void;
+  /** CSS fullscreen root used when the browser has no Fullscreen API element. */
+  portalRoot?: HTMLElement | null;
 }
 
 type LoadState =
@@ -53,8 +57,21 @@ export function RsvpOverlay({
   resolveFigure,
   listOrphans,
   prefetchFigures,
+  portalRoot = null,
 }: RsvpOverlayProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
+  const [portalTarget, setPortalTarget] = useState<HTMLElement>(() => fullscreenPortalTarget(document, portalRoot));
+
+  useEffect(() => {
+    const sync = () => setPortalTarget(fullscreenPortalTarget(document, portalRoot));
+    sync();
+    document.addEventListener('fullscreenchange', sync);
+    document.addEventListener('webkitfullscreenchange', sync);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      document.removeEventListener('webkitfullscreenchange', sync);
+    };
+  }, [portalRoot]);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,9 +103,9 @@ export function RsvpOverlay({
   const pageText = state.status === 'ready' ? state.text : '';
   const tokens = useMemo(() => (pageText ? attachFigureCues(tokenize(pageText)) : []), [pageText]);
 
-  return (
+  const overlay = (
     <div
-      className="absolute inset-0 z-50 flex flex-col bg-background text-foreground"
+      className="fixed inset-0 z-[250] flex flex-col bg-background text-foreground"
       role="dialog"
       aria-modal="true"
       aria-label="Lectura rápida"
@@ -145,4 +162,7 @@ export function RsvpOverlay({
       )}
     </div>
   );
+
+  if (portalTarget !== document.body) return createPortal(overlay, portalTarget);
+  return overlay;
 }

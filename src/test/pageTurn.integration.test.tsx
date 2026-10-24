@@ -110,7 +110,7 @@ describe('GIVEN the reader', () => {
     vi.restoreAllMocks();
   });
 
-  it('WHEN the user swipes left THEN the page commits without a rigid spin and the next page is shown', async () => {
+  it('GIVEN the reader WHEN the user swipes left THEN the page commits without a rigid spin and the next page is shown', async () => {
     render(<Reader />);
     const scene = document.querySelector('.pdf-turn-scene');
     if (!scene) throw new Error('missing scene');
@@ -130,7 +130,7 @@ describe('GIVEN the reader', () => {
     await waitFor(() => expect(leaf().style.transform).toBe(''));
   });
 
-  it('WHEN the user cancels the swipe THEN the same page stays', async () => {
+  it('GIVEN the reader WHEN the user cancels the swipe THEN the same page stays', async () => {
     render(<Reader />);
     const scene = document.querySelector('.pdf-turn-scene');
     if (!scene) throw new Error('missing scene');
