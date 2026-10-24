@@ -37,12 +37,17 @@ export function useRsvp(tokens: RsvpToken[], options: UseRsvpOptions = {}) {
       setPlaying(false);
       return;
     }
+    if (token.figureStep) {
+      setPlaying(false);
+      return;
+    }
     const timer = window.setTimeout(() => {
+      const latest = tokensRef.current;
       if (beforeAdvanceRef.current?.(index)) {
         setPlaying(false);
         return;
       }
-      if (index >= list.length - 1) {
+      if (index >= latest.length - 1) {
         finishedRef.current = true;
         setFinished(true);
         setPlaying(false);

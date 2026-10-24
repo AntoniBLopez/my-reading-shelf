@@ -1,6 +1,8 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { useRsvp } from '@/hooks/useRsvp';
+import { expandFigureSteps } from '@/lib/rsvp/figureSteps';
+import { attachFigureCues } from '@/lib/rsvp/figures/references';
 import { extractRenderedPageText, textItemsToPageText } from '@/lib/rsvp/pageText';
 import { delayFactor, endsSentence, wordDelayMs } from '@/lib/rsvp/timing';
 import { orpIndex, tokenize } from '@/lib/rsvp/tokenize';
@@ -275,6 +277,39 @@ describe('useRsvp', () => {
     });
     expect(result.current.playing).toBe(false);
     expect(result.current.index).toBe(0);
+  });
+
+  it('should pause when playback lands on a figure step and count that step', () => {
+    const tokens = expandFigureSteps(attachFigureCues(tokenize('Hola Figura 1. Luego.')));
+    expect(tokens).toHaveLength(5);
+    expect(tokens[3].figureStep?.key).toBe('figure:1');
+    const { result } = renderHook(() => useRsvp(tokens, { autoPlay: true }));
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(result.current.token?.word).toBe('1.');
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(result.current.token?.figureStep?.key).toBe('figure:1');
+    expect(result.current.playing).toBe(false);
+    expect(result.current.total).toBe(5);
+    expect(result.current.progress).toBe(80);
+
+    act(() => {
+      result.current.step(-1);
+    });
+    expect(result.current.token?.word).toBe('1.');
+    expect(result.current.token?.figureStep).toBeUndefined();
+    act(() => {
+      result.current.step(1);
+    });
+    expect(result.current.token?.figureStep?.key).toBe('figure:1');
+    expect(result.current.playing).toBe(false);
   });
 
   it('should not start playback when the speed changes', () => {

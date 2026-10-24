@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RsvpLaunchButton, RsvpOverlay } from '@/components/rsvp/RsvpOverlay';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { FigureCue, FigureImage } from '@/lib/rsvp/figures/types';
+import type { RsvpToken } from '@/lib/rsvp/tokenize';
 
 async function flushLoad() {
   await act(async () => {
@@ -16,10 +17,12 @@ function Reader({
   text,
   resolveFigure,
   listOrphans,
+  captionIndexes,
 }: {
   text: string;
   resolveFigure?: (cue: FigureCue) => Promise<FigureImage | null>;
   listOrphans?: (pageNumber: number, mentioned: ReadonlySet<string>) => Promise<FigureCue[]>;
+  captionIndexes?: (pageNumber: number, tokens: readonly RsvpToken[]) => Promise<readonly number[]>;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -34,6 +37,7 @@ function Reader({
           onClose={() => setOpen(false)}
           resolveFigure={resolveFigure}
           listOrphans={listOrphans}
+          captionIndexes={captionIndexes}
         />
       )}
     </TooltipProvider>
@@ -239,5 +243,104 @@ describe('RSVP figures', () => {
     expect(screen.getByRole('img', { name: 'Figura 9' })).toHaveAttribute('src', 'blob:orphan');
     fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
     expect(screen.getByText('Fin de la página')).toBeInTheDocument();
+  });
+
+  it('GIVEN a sentence with a figure WHEN next and previous controls are used THEN the figure is its own counted step', async () => {
+    render(
+      <Reader
+        text="Hola Figura 1. Luego."
+        resolveFigure={async (cue) => ({ url: 'blob:step', label: cue.label })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Lectura rápida' }));
+    await flushLoad();
+    const next = screen.getByRole('button', { name: 'Palabra siguiente' });
+    const previous = screen.getByRole('button', { name: 'Palabra anterior' });
+    fireEvent.click(next);
+    fireEvent.click(next);
+    fireEvent.click(next);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('img', { name: 'Figura 1' })).toHaveAttribute('src', 'blob:step');
+    expect(screen.getByText('4 / 5')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reproducir' })).toBeInTheDocument();
+
+    fireEvent.click(previous);
+    expect(screen.queryByRole('img', { name: 'Figura 1' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reproducir lectura' })).toHaveTextContent('1.');
+    expect(screen.getByText('3 / 5')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('img', { name: 'Figura 1' })).toBeInTheDocument();
+    expect(screen.getByText('4 / 5')).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole('img', { name: 'Figura 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reproducir' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.queryByRole('img', { name: 'Figura 1' })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(screen.getByRole('img', { name: 'Figura 1' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: ' ' });
+    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('Luego.');
+  });
+
+  it('GIVEN a caption directly under the image WHEN the following sentence ends THEN the figure step comes after that sentence', async () => {
+    render(
+      <Reader
+        text={'Figura 1.1.\nEl aparato sigue aquí.'}
+        resolveFigure={async (cue) => ({ url: 'blob:caption', label: cue.label })}
+        captionIndexes={async (_page, tokens) => {
+          const index = tokens.findIndex((token) => token.word === '1.1.');
+          return index < 0 ? [] : [index];
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Lectura rápida' }));
+    await flushLoad();
+    const next = screen.getByRole('button', { name: 'Palabra siguiente' });
+    fireEvent.click(next);
+    expect(screen.getByRole('button', { name: 'Reproducir lectura' })).toHaveTextContent('1.1.');
+    expect(screen.queryByRole('img', { name: 'Figura 1.1' })).not.toBeInTheDocument();
+    for (let step = 0; step < 5; step += 1) fireEvent.click(next);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('img', { name: 'Figura 1.1' })).toHaveAttribute('src', 'blob:caption');
+    expect(screen.getByText('7 / 7')).toBeInTheDocument();
+  });
+
+  it('GIVEN running text with a glued figure period WHEN the reader steps past that period THEN the figure step is immediately after it', async () => {
+    render(
+      <Reader
+        text="Ve la Figura 1.1. Aquí."
+        resolveFigure={async (cue) => ({ url: 'blob:body', label: cue.label })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Lectura rápida' }));
+    await flushLoad();
+    const next = screen.getByRole('button', { name: 'Palabra siguiente' });
+    fireEvent.click(next);
+    fireEvent.click(next);
+    fireEvent.click(next);
+    expect(screen.getByRole('button', { name: 'Reproducir lectura' })).toHaveTextContent('1.1.');
+    expect(screen.queryByRole('img', { name: 'Figura 1.1' })).not.toBeInTheDocument();
+    fireEvent.click(next);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('img', { name: 'Figura 1.1' })).toHaveAttribute('src', 'blob:body');
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    expect(screen.getByRole('button', { name: 'Pausar lectura' })).toHaveTextContent('Aquí.');
   });
 });

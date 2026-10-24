@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,8 +6,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { RsvpPlayer } from '@/components/rsvp/RsvpPlayer';
 import { attachFigureCues } from '@/lib/rsvp/figures/references';
 import type { FigureCue, FigureImage } from '@/lib/rsvp/figures/types';
+import { expandFigureSteps } from '@/lib/rsvp/figureSteps';
 import { fullscreenPortalTarget } from '@/lib/fullscreenPortal';
-import { tokenize } from '@/lib/rsvp/tokenize';
+import { tokenize, type RsvpToken } from '@/lib/rsvp/tokenize';
+
+const NO_CAPTIONS: readonly number[] = [];
 
 interface RsvpOverlayProps {
   pageNumber: number;
@@ -18,13 +21,15 @@ interface RsvpOverlayProps {
   resolveFigure?: (cue: FigureCue, pageNumber: number) => Promise<FigureImage | null>;
   listOrphans?: (pageNumber: number, mentioned: ReadonlySet<string>) => Promise<FigureCue[]>;
   prefetchFigures?: (pageNumber: number) => void;
+  /** Indexes of figure-number tokens that are captions under the image. */
+  captionIndexes?: (pageNumber: number, tokens: readonly RsvpToken[]) => Promise<readonly number[]>;
   /** CSS fullscreen root used when the browser has no Fullscreen API element. */
   portalRoot?: HTMLElement | null;
 }
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; text: string }
+  | { status: 'ready'; text: string; captionNumbers: readonly number[] }
   | { status: 'error' };
 
 export function RsvpLaunchButton({ disabled, onClick }: { disabled?: boolean; onClick: () => void }) {
@@ -57,10 +62,13 @@ export function RsvpOverlay({
   resolveFigure,
   listOrphans,
   prefetchFigures,
+  captionIndexes,
   portalRoot = null,
 }: RsvpOverlayProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [portalTarget, setPortalTarget] = useState<HTMLElement>(() => fullscreenPortalTarget(document, portalRoot));
+  const captionIndexesRef = useRef(captionIndexes);
+  captionIndexesRef.current = captionIndexes;
 
   useEffect(() => {
     const sync = () => setPortalTarget(fullscreenPortalTarget(document, portalRoot));
@@ -77,8 +85,12 @@ export function RsvpOverlay({
     let cancelled = false;
     setState({ status: 'loading' });
     loadPageText(pageNumber).then(
-      (text) => {
-        if (!cancelled) setState({ status: 'ready', text });
+      async (text) => {
+        if (cancelled) return;
+        const draft = tokenize(text);
+        const markCaptions = captionIndexesRef.current;
+        const numbers = markCaptions ? await markCaptions(pageNumber, draft) : [];
+        if (!cancelled) setState({ status: 'ready', text, captionNumbers: numbers });
       },
       () => {
         if (!cancelled) setState({ status: 'error' });
@@ -101,7 +113,11 @@ export function RsvpOverlay({
   }, [onClose]);
 
   const pageText = state.status === 'ready' ? state.text : '';
-  const tokens = useMemo(() => (pageText ? attachFigureCues(tokenize(pageText)) : []), [pageText]);
+  const captionNumbers = state.status === 'ready' ? state.captionNumbers : NO_CAPTIONS;
+  const tokens = useMemo(
+    () => (pageText ? expandFigureSteps(attachFigureCues(tokenize(pageText), new Set(captionNumbers))) : []),
+    [pageText, captionNumbers],
+  );
 
   const overlay = (
     <div

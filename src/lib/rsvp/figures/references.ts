@@ -91,13 +91,31 @@ export function mentionKeys(words: readonly string[]): Set<string> {
 
 type ReadableToken = { word: string; endsBlock?: boolean };
 
+/** "1.1." / "3-2." — a sentence period glued to the figure number itself. */
+export function isGluedFigurePeriod(word: string): boolean {
+  const trimmed = word.replace(/['")\]]+$/u, '');
+  if (!trimmed.endsWith('.')) return false;
+  const core = trimmed.slice(0, -1);
+  return normalizeFigureNumber(core) != null && /\d/.test(core);
+}
+
 /**
  * Index of the word that closes the sentence containing `from`.
+ * A period glued to a caption number is skipped only when `skipGluedPeriod` is set.
  * Computed once per mention while the page is prepared, not on each tick.
  */
-export function sentenceEndIndex(tokens: readonly ReadableToken[], from: number): number {
+export function sentenceEndIndex(
+  tokens: readonly ReadableToken[],
+  from: number,
+  skipGluedPeriod = false,
+): number {
   const last = Math.max(0, tokens.length - 1);
-  for (let index = Math.max(0, from); index <= last; index += 1) {
+  let index = Math.min(Math.max(0, from), last);
+  if (skipGluedPeriod && isGluedFigurePeriod(tokens[index]?.word ?? '')) {
+    if (index >= last) return last;
+    index += 1;
+  }
+  for (; index <= last; index += 1) {
     const token = tokens[index];
     if (endsSentence(token.word) || token.endsBlock) return index;
   }
@@ -105,14 +123,18 @@ export function sentenceEndIndex(tokens: readonly ReadableToken[], from: number)
 }
 
 /** Attach each first mention to the end of its sentence. Later mentions stay words. */
-export function attachFigureCues<T extends ReadableToken>(tokens: readonly T[]): (T & { figureAfter?: FigureCue })[] {
+export function attachFigureCues<T extends ReadableToken>(
+  tokens: readonly T[],
+  captionNumberIndexes?: ReadonlySet<number>,
+): (T & { figureAfter?: FigureCue })[] {
   const seen = new Set<string>();
   const cueAt = new Map<number, FigureCue>();
   const words = tokens.map((token) => token.word);
   for (const mention of findMentions(words)) {
     if (seen.has(mention.cue.key)) continue;
     seen.add(mention.cue.key);
-    let at = sentenceEndIndex(tokens, mention.endIndex);
+    const skip = captionNumberIndexes?.has(mention.endIndex) ?? false;
+    let at = sentenceEndIndex(tokens, mention.endIndex, skip);
     while (cueAt.has(at) && at < tokens.length - 1) at += 1;
     cueAt.set(at, mention.cue);
   }

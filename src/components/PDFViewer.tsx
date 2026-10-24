@@ -30,6 +30,7 @@ import {
 import { cn } from '@/lib/utils';
 import { PDFPageStage, PDFPageStageHandle } from '@/components/PDFPageStage';
 import { RsvpLaunchButton, RsvpOverlay } from '@/components/rsvp/RsvpOverlay';
+import { useFullscreenKey } from '@/hooks/useFullscreenKey';
 import { usePdfFigures } from '@/hooks/usePdfFigures';
 import { useReaderChromeKeys } from '@/hooks/useReaderChromeKeys';
 import { useReaderPageText } from '@/hooks/useReaderPageText';
@@ -879,6 +880,8 @@ function PDFViewerComponent({
     }
   }, [isFullscreen]);
 
+  useFullscreenKey(isOpen, toggleFullscreen);
+
   useEffect(() => {
     if (isMobileLayout()) return;
     if (isFullscreen && !scaleTouchedRef.current) {
@@ -1163,6 +1166,7 @@ function PDFViewerComponent({
             resolveFigure={figures.resolveFigure}
             listOrphans={figures.listOrphans}
             prefetchFigures={figures.prefetch}
+            captionIndexes={figures.captionIndexes}
           />
         )}
       </DialogContent>

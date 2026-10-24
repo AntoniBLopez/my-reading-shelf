@@ -10,16 +10,9 @@ export interface FigureResolver {
   prefetch?: (pageNumber: number) => void;
 }
 
-interface PlaybackControls {
-  index: number;
-  total: number;
-  step: (delta: number) => void;
-  play: () => void;
-}
-
 /**
- * Pauses the word timer when a figure cue is due, without doing PDF work inside
- * that timer. Image lookup is prefetched on idle and again when the slide opens.
+ * Loads the image for the figure step currently on screen.
+ * PDF work stays off the word timer: cues are prefetched while idle.
  */
 export function useRsvpFigures(
   tokens: readonly RsvpToken[],
@@ -31,24 +24,18 @@ export function useRsvpFigures(
   const [searching, setSearching] = useState(false);
   const [orphans, setOrphans] = useState<FigureCue[]>([]);
   const figureRef = useRef<FigureCue | null>(null);
-  const orphanCursor = useRef(0);
+  const seenImages = useRef(new Map<string, FigureImage>());
   figureRef.current = figure;
-  const tokensRef = useRef(tokens);
-  tokensRef.current = tokens;
-  const orphansRef = useRef(orphans);
-  orphansRef.current = orphans;
-
-  useEffect(() => {
-    orphanCursor.current = 0;
-    setFigure((current) => (current === null ? current : null));
-    setImage((current) => (current === null ? current : null));
-    setSearching((current) => (current === false ? current : false));
-    setOrphans((current) => (current.length === 0 ? current : []));
-  }, [pageNumber, tokens]);
 
   useEffect(() => {
     if (!figure || !resolveFigure) {
       setImage(null);
+      setSearching(false);
+      return;
+    }
+    const cached = seenImages.current.get(figure.key);
+    if (cached) {
+      setImage(cached);
       setSearching(false);
       return;
     }
@@ -57,6 +44,7 @@ export function useRsvpFigures(
     setImage(null);
     resolveFigure(figure, pageNumber).then((next) => {
       if (cancelled) return;
+      if (next) seenImages.current.set(figure.key, next);
       setImage(next);
       setSearching(false);
     });
@@ -68,7 +56,10 @@ export function useRsvpFigures(
   useEffect(() => {
     const words = tokens.map((token) => token.word);
     const mentioned = mentionKeys(words);
-    const cues = tokens.flatMap((token) => (token.figureAfter ? [token.figureAfter] : []));
+    const cues = tokens.flatMap((token) => {
+      const cue = token.figureStep ?? token.figureAfter;
+      return cue ? [cue] : [];
+    });
     let cancelled = false;
     const cancelIdle = whenIdle(() => {
       if (cancelled) return;
@@ -77,7 +68,11 @@ export function useRsvpFigures(
         for (const cue of cues) void resolveFigure(cue, pageNumber);
       }
       listOrphans?.(pageNumber, mentioned).then((list) => {
-        if (!cancelled) setOrphans(list);
+        if (cancelled) return;
+        setOrphans(list);
+        if (resolveFigure) {
+          for (const cue of list) void resolveFigure(cue, pageNumber);
+        }
       });
     });
     return () => {
@@ -86,51 +81,14 @@ export function useRsvpFigures(
     };
   }, [tokens, pageNumber, resolveFigure, listOrphans, prefetch]);
 
-  const beforeAdvance = useCallback((index: number) => {
-    const cue = tokensRef.current[index]?.figureAfter;
-    if (cue) {
-      setImage(null);
-      setSearching(true);
-      setFigure(cue);
-      return true;
-    }
-    if (index < tokensRef.current.length - 1) return false;
-    const next = orphansRef.current[orphanCursor.current];
-    if (!next) return false;
-    setImage(null);
-    setSearching(true);
+  const focus = useCallback((next: FigureCue | null) => {
+    if (figureRef.current?.key === next?.key) return;
+    figureRef.current = next;
     setFigure(next);
-    return true;
+    const cached = next ? seenImages.current.get(next.key) ?? null : null;
+    setImage(cached);
+    setSearching(Boolean(next) && !cached);
   }, []);
 
-  const dismiss = useCallback(() => {
-    setFigure(null);
-    setImage(null);
-    setSearching(false);
-  }, []);
-
-  const continueReading = useCallback((controls: PlaybackControls) => {
-    const current = figureRef.current;
-    const list = orphansRef.current;
-    const orphanPos = current ? list.findIndex((cue) => cue.key === current.key) : -1;
-    setFigure(null);
-    setImage(null);
-    setSearching(false);
-    if (orphanPos >= 0) orphanCursor.current = orphanPos + 1;
-    const upcoming = list[orphanCursor.current];
-    const atEnd = controls.index >= Math.max(0, controls.total - 1);
-    if (atEnd && upcoming) {
-      setSearching(true);
-      setFigure(upcoming);
-      return;
-    }
-    if (atEnd) {
-      controls.step(1);
-      return;
-    }
-    controls.step(1);
-    controls.play();
-  }, []);
-
-  return { figure, image, searching, beforeAdvance, continueReading, dismiss };
+  return { figure, image, searching, orphans, focus };
 }

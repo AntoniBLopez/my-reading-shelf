@@ -8,6 +8,8 @@ export interface RsvpToken {
   delayFactor: number;
   /** Present on the last word of the sentence that first mentions a figure or table. */
   figureAfter?: FigureCue;
+  /** A step that shows the figure instead of a word. Counts in the progress total. */
+  figureStep?: FigureCue;
   /** Last word before a paragraph or block break, even when it has no period. */
   endsBlock?: boolean;
 }
