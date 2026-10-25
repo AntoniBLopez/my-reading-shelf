@@ -73,12 +73,8 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const neighborPixelRatio = pageDevicePixelRatio(pixelRatio, touchPrimary, 'neighbor');
 
   const commitPage = (page: number) => {
-    const dir: TurnDirection = page >= slotsRef.current.leaf ? 'next' : 'prev';
-    setSlots({
-      leaf: page,
-      next: dir === 'next' ? page : page + 1,
-      prev: dir === 'prev' ? page : page - 1,
-    });
+    // Keep the page on either side mounted so the next turn already has a bitmap.
+    setSlots(slotsFor(page));
     props.onCommit(page);
   };
 

@@ -20,6 +20,9 @@ type CreatePageCurlArgs = {
   onResult: (committed: boolean) => void;
   /** Fires once the curl sheet is actually on screen. */
   onVisible?: () => void;
+  /** Drop this curl when a newer turn has already taken the page. */
+  isCancelled?: () => boolean;
+  flippingTime?: number;
 };
 
 function invertPixels(context: CanvasRenderingContext2D, width: number, height: number) {
@@ -33,32 +36,41 @@ function invertPixels(context: CanvasRenderingContext2D, width: number, height: 
   context.putImageData(image, 0, 0);
 }
 
+/** Long edge of the curl bitmap. A full retina PNG encode was stalling the turn for seconds. */
+const SNAPSHOT_MAX_EDGE = 1400;
+
 /** One bitmap per gesture. Object URLs avoid a synchronous base64 encode on the drag. */
 async function snapshotCanvas(source: HTMLCanvasElement, invert: boolean, mirror: boolean): Promise<string> {
   const width = Math.max(1, source.width);
   const height = Math.max(1, source.height);
+  const scale = Math.min(1, SNAPSHOT_MAX_EDGE / Math.max(width, height));
   const copy = document.createElement('canvas');
-  copy.width = width;
-  copy.height = height;
+  copy.width = Math.max(1, Math.round(width * scale));
+  copy.height = Math.max(1, Math.round(height * scale));
   const context = copy.getContext('2d', { willReadFrequently: invert });
-  if (!context) return source.toDataURL('image/png');
+  if (!context) return source.toDataURL('image/jpeg', 0.86);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
   if (mirror) {
-    context.translate(width, 0);
+    context.translate(copy.width, 0);
     context.scale(-1, 1);
   }
-  context.drawImage(source, 0, 0, width, height);
+  context.drawImage(source, 0, 0, copy.width, copy.height);
   // Pixel invert, not ctx.filter: mobile browsers often ignore the filter and the sheet stays light.
-  if (invert) invertPixels(context, width, height);
+  if (invert) invertPixels(context, copy.width, copy.height);
   const blob = await new Promise<Blob | null>((resolve) => {
     if (!copy.toBlob) {
       resolve(null);
       return;
     }
-    copy.toBlob((value) => resolve(value), 'image/png');
+    // toBlob sometimes never calls back. The page turn must not wait on it.
+    const timer = window.setTimeout(() => resolve(null), 240);
+    copy.toBlob((value) => {
+      window.clearTimeout(timer);
+      resolve(value);
+    }, 'image/jpeg', 0.86);
   });
-  if (!blob) return copy.toDataURL('image/png');
+  if (!blob) return copy.toDataURL('image/jpeg', 0.86);
   return URL.createObjectURL(blob);
 }
 
@@ -226,10 +238,13 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   const currentUrl = await snapshotCanvas(args.current, args.invert, mirror);
   const otherUrl = await snapshotCanvas(args.other, args.invert, mirror);
   const snapshotUrls = [currentUrl, otherUrl];
-  if (!args.scene.isConnected) {
+  if (args.isCancelled?.() || !args.scene.isConnected) {
+    for (const url of snapshotUrls) {
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    }
     return {
       move: () => undefined,
-      release: () => args.onResult(false),
+      release: () => undefined,
       destroy: () => undefined,
     };
   }
@@ -251,7 +266,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
     showCover: false,
     drawShadow: true,
     maxShadowOpacity: args.invert ? 0.5 : 0.28,
-    flippingTime: 520,
+    flippingTime: args.flippingTime ?? 520,
     useMouseEvents: false,
     showPageCorners: false,
     disableFlipByClick: false,
@@ -392,7 +407,10 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
         showCurl();
         return;
       }
-      if (performance.now() - started > 450) return;
+      if (performance.now() - started > 450) {
+        finish(false);
+        return;
+      }
       window.requestAnimationFrame(tick);
     };
     window.requestAnimationFrame(tick);

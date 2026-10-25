@@ -36,6 +36,7 @@ import { useReaderChromeKeys } from '@/hooks/useReaderChromeKeys';
 import { useReaderPageText } from '@/hooks/useReaderPageText';
 import type { ReadablePdf } from '@/lib/rsvp/pageText';
 import { focusReaderFullscreenRoot, guardReaderFullscreenClick } from '@/lib/readerFullscreen';
+import { turnDirectionFromKey } from '@/lib/pageTurnGesture';
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const MOBILE_LAYOUT_QUERY = '(max-width: 1023px)';
@@ -771,12 +772,10 @@ function PDFViewerComponent({
       if (rsvpOpenRef.current) return;
       const target = e.target as HTMLElement;
       if (target.closest('input') || target.closest('textarea') || target.isContentEditable) return;
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      const direction = turnDirectionFromKey(e.key);
+      if (direction) {
         e.preventDefault();
-        requestTurn('prev');
-      } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        requestTurn('next');
+        requestTurn(direction);
       } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
         e.preventDefault();
         setScaleClamped(s => s + 0.1);
