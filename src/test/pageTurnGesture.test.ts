@@ -9,8 +9,10 @@ import {
   leafOffsetPx,
   nextVelocity,
   releaseOffsetPx,
+  pageAfterTurns,
   shouldCommitTurn,
   targetPage,
+  turnDirectionFromKey,
   turnProgress,
 } from '@/lib/pageTurnGesture';
 
@@ -80,5 +82,21 @@ describe('page turn gesture', () => {
     expect(releaseOffsetPx(300, 'next', true)).toBe(-300);
     expect(releaseOffsetPx(300, 'prev', true)).toBe(300);
     expect(releaseOffsetPx(300, 'next', false)).toBe(0);
+  });
+
+  it('should map arrow keys to a page turn in normal and fullscreen readers', () => {
+    expect(turnDirectionFromKey('ArrowRight')).toBe('next');
+    expect(turnDirectionFromKey('ArrowUp')).toBe('next');
+    expect(turnDirectionFromKey('ArrowLeft')).toBe('prev');
+    expect(turnDirectionFromKey('ArrowDown')).toBe('prev');
+    expect(turnDirectionFromKey('f')).toBeNull();
+    expect(turnDirectionFromKey('Escape')).toBeNull();
+  });
+
+  it('should apply every rapid turn instead of keeping the page that is still curling', () => {
+    expect(pageAfterTurns(2, 12, ['next', 'next', 'next'])).toBe(5);
+    expect(pageAfterTurns(4, 12, ['prev', 'prev'])).toBe(2);
+    expect(pageAfterTurns(2, 4, ['next', 'next', 'next', 'next'])).toBe(4);
+    expect(pageAfterTurns(1, 4, ['prev', 'next'])).toBe(2);
   });
 });

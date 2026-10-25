@@ -64,6 +64,24 @@ export function targetPage(page: number, dir: TurnDirection): number {
   return dir === 'next' ? page + 1 : page - 1;
 }
 
+/** Header arrows and the keyboard. Same mapping in the window and in fullscreen. */
+export function turnDirectionFromKey(key: string): TurnDirection | null {
+  if (key === 'ArrowLeft' || key === 'ArrowDown') return 'prev';
+  if (key === 'ArrowRight' || key === 'ArrowUp') return 'next';
+  return null;
+}
+
+/**
+ * Apply every requested turn to the latest page.
+ * A turn that is still curling does not swallow the next one.
+ */
+export function pageAfterTurns(page: number, pageCount: number, dirs: readonly TurnDirection[]): number {
+  return dirs.reduce((current, dir) => {
+    if (isEdgeBlocked(dir, current, pageCount)) return current;
+    return targetPage(current, dir);
+  }, page);
+}
+
 export function releaseOffsetPx(width: number, dir: TurnDirection, commit: boolean): number {
   if (!commit) return 0;
   const limit = Math.max(1, width);

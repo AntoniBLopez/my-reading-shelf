@@ -56,6 +56,9 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   const pointersRef = useRef(new Set<number>());
   const lockRef = useRef(false);
   const pendingTargetRef = useRef<number | null>(null);
+  const paintedRef = useRef(false);
+  const curlSettledRef = useRef(false);
+  const rushRef = useRef(false);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef(0);
   const pendingDirRef = useRef<TurnDirection | null>(null);
@@ -138,8 +141,13 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   };
 
   const finishSettle = () => {
-    if (pendingTargetRef.current == null) return;
+    if (pendingTargetRef.current == null && !curlRef.current && !launchingRef.current) {
+      lockRef.current = false;
+      return;
+    }
     pendingTargetRef.current = null;
+    paintedRef.current = false;
+    curlSettledRef.current = false;
     clearSettle();
     destroyCurl();
     markFollow(false);
@@ -151,20 +159,54 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   const settle = useCallback((paintedPage?: number) => {
     if (pendingTargetRef.current == null) return;
     if (paintedPage != null && paintedPage !== pendingTargetRef.current) return;
+    // The fold is still the old bitmaps. Leave it up until it finishes.
+    if ((curlRef.current || launchingRef.current) && !curlSettledRef.current) {
+      paintedRef.current = true;
+      return;
+    }
     finishSettle();
     // finishSettle closes over the latest refs. settle is stable for the page stage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const armSettle = (target: number) => {
+    clearSettle();
+    const started = performance.now();
+    const tick = () => {
+      settleTimerRef.current = null;
+      if (pendingTargetRef.current !== target) return;
+      const curling = (curlRef.current != null || launchingRef.current) && !curlSettledRef.current;
+      // Keep the sheet until the fold ends and the new page has painted.
+      // A new turn does not wait for this timer.
+      if ((curling || !paintedRef.current) && performance.now() - started < 1400) {
+        settleTimerRef.current = setTimeout(tick, 64);
+        return;
+      }
+      finishSettle();
+    };
+    settleTimerRef.current = setTimeout(tick, SETTLE_FALLBACK_MS);
+  };
+
   const finishCommit = (target: number) => {
-    lockRef.current = true;
+    // The page changes now. The curl and the PDF render are not a gate.
+    lockRef.current = false;
     pendingTargetRef.current = target;
+    paintedRef.current = false;
+    curlSettledRef.current = false;
     flushSync(() => {
       onCommitRef.current(target);
     });
     if (pendingTargetRef.current == null) return;
+    armSettle(target);
+  };
+
+  /** Drop a curl that is still playing so the next turn can start. */
+  const cutCurl = () => {
+    if (curlRef.current || launchingRef.current) rushRef.current = true;
     clearSettle();
-    settleTimerRef.current = setTimeout(finishSettle, SETTLE_FALLBACK_MS);
+    destroyCurl();
+    curlSettledRef.current = false;
+    lockRef.current = false;
   };
 
   const resetSheet = () => {
@@ -190,6 +232,8 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     const width = Math.max(1, gesture?.width || leafRef.current?.clientWidth || 1);
     const height = Math.max(1, gesture?.height || leafRef.current?.clientHeight || 1);
     const gen = ++curlGenRef.current;
+    const flippingTime = rushRef.current ? 200 : 520;
+    rushRef.current = false;
     launchingRef.current = true;
     void createPageCurl({
       scene,
@@ -199,19 +243,23 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       current,
       other,
       invert: document.documentElement.classList.contains('dark'),
+      flippingTime,
+      isCancelled: () => gen !== curlGenRef.current,
       onVisible: () => {
         if (gen !== curlGenRef.current) return;
         leafRef.current?.classList.add('pdf-turn-leaf--covered');
       },
       onResult: (committed) => {
         if (gen !== curlGenRef.current) return;
-        curlRef.current = null;
         launchingRef.current = false;
         if (!committed) {
-          resetSheet();
+          if (pendingTargetRef.current == null) resetSheet();
+          else finishSettle();
           return;
         }
+        curlSettledRef.current = true;
         if (pendingTargetRef.current == null) finishCommit(target);
+        else if (paintedRef.current) finishSettle();
       },
     }).then((session) => {
       if (gen !== curlGenRef.current) {
@@ -271,19 +319,19 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     const progress = turnProgress(dx, gesture.width, gesture.dir);
     const commit = shouldCommitTurn({ progress, vx: gesture.vx, dir: gesture.dir, blocked });
     const target = targetPage(pageRef.current, gesture.dir);
-    if (curlRef.current) {
-      lockRef.current = true;
-      curlRef.current.release(progress, commit && !blocked);
+    if (!commit || blocked) {
+      if (curlRef.current) curlRef.current.release(progress, false);
+      else resetSheet();
       return;
     }
-    if (commit && !blocked) finishCommit(target);
-    else resetSheet();
+    if (curlRef.current) curlRef.current.release(progress, true);
+    finishCommit(target);
   };
 
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
       const gesture = gestureRef.current;
-      if (!gesture || event.pointerId !== gesture.pointerId || lockRef.current) return;
+      if (!gesture || event.pointerId !== gesture.pointerId) return;
       if (!enabledRef.current()) {
         gestureRef.current = null;
         resetSheet();
@@ -299,6 +347,8 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
         }
         if (phase !== 'horizontal') return;
         gesture.active = true;
+        // A fold still on screen must not swallow this drag.
+        cutCurl();
         gesture.dir = directionFromDx(dx);
         notifyActive(true);
         armTouch();
@@ -322,6 +372,7 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
     return () => {
+      curlGenRef.current += 1;
       cancelFollow();
       disarmTouch();
       curlRef.current?.destroy();
@@ -340,7 +391,7 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
       if (gestureRef.current && !lockRef.current) resetSheet();
       return;
     }
-    if (lockRef.current || gestureRef.current) return;
+    if (gestureRef.current) return;
     if (!enabledRef.current()) return;
     if (event.pointerType === 'mouse' && event.button != null && event.button !== 0) return;
     const target = event.target;
@@ -365,20 +416,20 @@ export function usePageSwipe({ page, pageCount, enabled, leafRef, sceneRef, onCo
   }, [leafRef]);
 
   const turn = useCallback((dir: TurnDirection) => {
-    if (lockRef.current || gestureRef.current?.active) return;
+    if (gestureRef.current?.active) return;
     if (!enabledRef.current()) return;
     if (isEdgeBlocked(dir, pageRef.current, pageCountRef.current)) return;
+    cutCurl();
     const from = pageRef.current;
     const target = targetPage(from, dir);
-    lockRef.current = true;
     notifyActive(true);
     setTurn(dir);
-    if (!ensureCurl(dir, from, target, true)) finishCommit(target);
+    ensureCurl(dir, from, target, true);
+    finishCommit(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const cancel = useCallback(() => {
-    if (lockRef.current && !gestureRef.current) return;
     resetSheet();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
