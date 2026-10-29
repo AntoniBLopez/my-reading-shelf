@@ -71,4 +71,28 @@ describe('page turn slots', () => {
     expect(settled.hole).toBeNull();
     expect(shownNeighbor(settled, 'next') - settled.leaf).toBe(1);
   });
+
+  it('should reveal only the next page on a slow drag after rapid drops that never settled', () => {
+    let slots = slotsForPage(2);
+    for (let step = 0; step < 4; step += 1) {
+      const origin = slots.leaf;
+      slots = reduceTurn(slots, { type: 'drag-start' }, BOOK);
+      const revealed = shownNeighbor(slots, 'next');
+      expect(revealed).toBe(origin + 1);
+      slots = reduceTurn(slots, { type: 'drop', dir: 'next' }, BOOK);
+      expect(slots.leaf).toBe(origin + 1);
+      expect(shownNeighbor(slots, 'next')).toBe(origin + 1);
+    }
+
+    const origin = slots.leaf;
+    const staleGen = 1;
+    slots = reduceTurn(slots, { type: 'drag-start' }, BOOK);
+    expect(shownNeighbor(slots, 'next')).toBe(origin + 1);
+    const interrupted = reduceTurn(slots, { type: 'settle', gen: staleGen }, BOOK);
+    expect(interrupted.leaf).toBe(origin);
+    expect(shownNeighbor(interrupted, 'next')).toBe(origin + 1);
+    slots = reduceTurn(interrupted, { type: 'drop', dir: 'next' }, BOOK);
+    expect(slots.leaf).toBe(origin + 1);
+    expect(shownNeighbor(slots, 'next')).toBe(origin + 1);
+  });
 });
