@@ -1,12 +1,16 @@
 import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
+import { onPwaNeedReload, startPwaAutoReload } from "@/lib/pwaAutoReload";
 import { onRegisteredServiceWorker } from "@/lib/pwaUpdate";
 import App from "./App.tsx";
 import "./index.css";
 
 if (import.meta.env.PROD) {
+  // Capture the current controller, then listen, before registerSW can claim.
+  startPwaAutoReload();
   registerSW({
     immediate: true,
+    onNeedReload: onPwaNeedReload,
     onRegisteredSW: onRegisteredServiceWorker,
   });
 } else if ("serviceWorker" in navigator) {
