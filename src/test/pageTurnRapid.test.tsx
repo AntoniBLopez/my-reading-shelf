@@ -123,7 +123,8 @@ describe('rapid page turns', () => {
       stageRef.current?.turn('next');
     });
 
-    expect(leafText()).toBe('4');
+    expect(scene.getAttribute('data-committed')).toBe('4');
+    expect(leafText()).toBe('3');
     expect(vi.getTimerCount()).toBeGreaterThan(0);
   });
 });

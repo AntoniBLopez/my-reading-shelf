@@ -130,7 +130,8 @@ describe('revealed page identity', () => {
 
     pointer('pointerup', window, 40, 84);
 
-    expect(textOf('.pdf-turn-leaf')).toBe('3');
+    expect(scene.getAttribute('data-committed')).toBe('3');
+    expect(textOf('.pdf-turn-leaf')).toBe('2');
     expect(textOf('.pdf-turn-under--next')).toBe('3');
     expect(textOf('.pdf-turn-prefetch--next')).toBe('4');
   });
@@ -149,7 +150,8 @@ describe('revealed page identity', () => {
 
     pointer('pointerup', window, 240, 84);
 
-    expect(textOf('.pdf-turn-leaf')).toBe('3');
+    expect(scene.getAttribute('data-committed')).toBe('3');
+    expect(textOf('.pdf-turn-leaf')).toBe('4');
     expect(textOf('.pdf-turn-under--prev')).toBe('3');
     expect(textOf('.pdf-turn-prefetch--prev')).toBe('2');
   });

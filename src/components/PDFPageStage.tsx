@@ -62,6 +62,9 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const leafRef = useRef<HTMLDivElement>(null);
   const genRef = useRef(0);
   const [slots, setSlots] = useState(() => slotsForPage(props.pageNumber));
+  // The bitmap the reader sees. It stays on the page the curl sheet was drawn from
+  // until that sheet covers it, so the leaf cannot jump ahead and then backwards.
+  const [face, setFace] = useState(props.pageNumber);
 
   const file = useMemo(() => props.pdfUrl, [props.pdfUrl]);
   const { resolvedTheme } = useTheme();
@@ -70,10 +73,15 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const pixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
   const pageRatio = pageDevicePixelRatio(pixelRatio, touchPrimary, 'leaf');
 
+  const showFace = (page: number) => {
+    setFace((current) => (current === page ? current : page));
+  };
+
   const commitPage = (page: number) => {
     // The hole already shows `page`. Keep it there; the next neighbor is only a prefetch.
     setSlots((current) => commitTurnSlots(current, page));
     props.onCommit(page);
+    if (leafRef.current?.classList.contains('pdf-turn-leaf--covered')) showFace(page);
   };
 
   const pageNumberRef = useRef(props.pageNumber);
@@ -98,7 +106,12 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
           ? settled
           : slotsForPage(pageNumberRef.current, settled.gen);
       });
+      if (genRef.current === gen) showFace(pageNumberRef.current);
     },
+    onCovered: () => {
+      showFace(pageNumberRef.current);
+    },
+    onAlign: showFace,
     onActive: (active) => {
       props.onTurnActive?.(active);
     },
@@ -110,6 +123,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
     setSlots((current) =>
       current.leaf === props.pageNumber ? current : slotsForPage(props.pageNumber, current.gen),
     );
+    showFace(props.pageNumber);
   }, [props.pageNumber, locked]);
 
   useImperativeHandle(ref, () => ({ turn, cancel }), [turn, cancel]);
@@ -192,6 +206,8 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         <div
           ref={sceneRef}
           className={cn('pdf-turn-scene', props.panFree && 'pdf-turn-scene--free')}
+          data-committed={slots.leaf}
+          data-face={face}
           onPointerDown={onPointerDown}
         >
           {[...neighbors.entries()].map(([page, className]) => (
@@ -201,7 +217,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
             <div className="pdf-turn-face pdf-turn-face--front">
               <TurnSlot
                 {...slotProps}
-                pageNumber={slots.leaf}
+                pageNumber={face}
                 className="pdf-turn-face-page"
                 text
                 onText={handlePageText}

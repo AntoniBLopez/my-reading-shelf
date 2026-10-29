@@ -146,7 +146,8 @@ describe('rapid turns then a slow step', () => {
     act(() => {
       for (let step = 0; step < 4; step += 1) stageRef.current?.turn('next');
     });
-    expect(textOf('.pdf-turn-leaf')).toBe('6');
+    expect(scene.getAttribute('data-committed')).toBe('6');
+    expect(textOf('.pdf-turn-leaf')).toBe('5');
 
     const origin = 6;
     const destination = 7;
@@ -193,7 +194,9 @@ describe('rapid turns then a slow step', () => {
     act(() => {
       for (let step = 0; step < 3; step += 1) stageRef.current?.turn('next');
     });
-    expect(textOf('.pdf-turn-leaf')).toBe('5');
+    const scene = document.querySelector('.pdf-turn-scene');
+    expect(scene?.getAttribute('data-committed')).toBe('5');
+    expect(textOf('.pdf-turn-leaf')).toBe('4');
 
     armed = true;
     act(() => {
@@ -201,7 +204,8 @@ describe('rapid turns then a slow step', () => {
     });
 
     expect(revealedAtCommit).toBe('6');
-    expect(textOf('.pdf-turn-leaf')).toBe('6');
+    expect(scene?.getAttribute('data-committed')).toBe('6');
+    expect(textOf('.pdf-turn-leaf')).toBe('5');
     expect(textOf('.pdf-turn-under--next')).not.toBe('5');
   });
 });
