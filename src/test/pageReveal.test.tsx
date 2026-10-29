@@ -176,8 +176,10 @@ describe('sharp page reveal', () => {
     expect(getComputedStyle(scene.querySelector('.pdf-turn-under--next') as Element).visibility).toBe('visible');
 
     pointer('pointerup', window, 40, 84);
-    const settled = canvasIn('.pdf-turn-leaf');
+    expect(scene.getAttribute('data-committed')).toBe('3');
+    const settled = canvasIn('.pdf-turn-under--next');
     expect(settled.dataset.page).toBe('3');
+    expect(canvasIn('.pdf-turn-leaf').dataset.page).toBe('2');
     expect(backingRatio(settled)).toBe(window.devicePixelRatio);
     expect(settled.width).toBe(revealed.width);
     expect(settled.height).toBe(revealed.height);

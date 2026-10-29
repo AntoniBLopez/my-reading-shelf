@@ -17,6 +17,7 @@ type SessionHost = {
   onCommitRef: { current: (page: number) => void };
   onBeginRef: { current: (gen: number) => void };
   onSettledRef: { current: (gen: number) => void };
+  onCoveredRef: { current: () => void };
   onActiveRef: { current: ((active: boolean) => void) | undefined };
   gestureRef: { current: CurlGesture | null };
   cancelFollow: () => void;
@@ -196,6 +197,12 @@ export class PageTurnSession {
     return this.curl != null;
   }
 
+  /** No sheet is coming, so the committed page can show immediately. */
+  revealIfIdle() {
+    if (this.curl || this.launching) return;
+    this.host.onCoveredRef.current();
+  }
+
   ensureCurl(dir: TurnDirection, from: number, target: number, auto = false): boolean {
     if (this.curl || this.launching) return true;
     const scene = this.host.sceneRef.current;
@@ -223,6 +230,8 @@ export class PageTurnSession {
       onVisible: () => {
         if (gen !== this.curlGen) return;
         this.host.leafRef.current?.classList.add('pdf-turn-leaf--covered');
+        // The leaf may now show the committed page. It stays hidden under the sheet.
+        this.host.onCoveredRef.current();
       },
       onResult: (committed) => {
         if (gen !== this.curlGen) return;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { flushSync } from 'react-dom';
 import {
   directionFromDx,
   gesturePhase,
@@ -30,6 +31,10 @@ type UsePageSwipeArgs = {
   onCommit: (page: number) => void;
   onBegin?: (gen: number) => void;
   onSettled?: (gen: number) => void;
+  /** The curl is covering the leaf, or no curl will. The visible page may catch up. */
+  onCovered?: () => void;
+  /** Show the page the curl sheet is about to draw, not the page it reveals. */
+  onAlign?: (page: number) => void;
   onActive?: (active: boolean) => void;
 };
 
@@ -42,6 +47,8 @@ export function usePageSwipe({
   onCommit,
   onBegin,
   onSettled,
+  onCovered,
+  onAlign,
   onActive,
 }: UsePageSwipeArgs) {
   const pageRef = useRef(page);
@@ -49,6 +56,8 @@ export function usePageSwipe({
   const onCommitRef = useRef(onCommit);
   const onBeginRef = useRef(onBegin ?? (() => {}));
   const onSettledRef = useRef(onSettled ?? (() => {}));
+  const onCoveredRef = useRef(onCovered ?? (() => {}));
+  const onAlignRef = useRef(onAlign ?? (() => {}));
   const onActiveRef = useRef(onActive);
   const enabledRef = useRef(enabled);
   pageRef.current = page;
@@ -56,6 +65,8 @@ export function usePageSwipe({
   onCommitRef.current = onCommit;
   onBeginRef.current = onBegin ?? (() => {});
   onSettledRef.current = onSettled ?? (() => {});
+  onCoveredRef.current = onCovered ?? (() => {});
+  onAlignRef.current = onAlign ?? (() => {});
   onActiveRef.current = onActive;
   enabledRef.current = enabled;
 
@@ -91,6 +102,7 @@ export function usePageSwipe({
       onCommitRef,
       onBeginRef,
       onSettledRef,
+      onCoveredRef,
       onActiveRef,
       gestureRef,
       cancelFollow,
@@ -153,6 +165,7 @@ export function usePageSwipe({
     }
     if (session.hasCurl()) session.releaseCurl(progress, true);
     session.finishCommit(target);
+    session.revealIfIdle();
   };
 
   useEffect(() => {
@@ -176,6 +189,7 @@ export function usePageSwipe({
         gesture.active = true;
         session.cutCurl();
         session.beginGesture();
+        flushSync(() => onAlignRef.current(pageRef.current));
         gesture.dir = directionFromDx(dx);
         armTouch();
       }
@@ -246,10 +260,14 @@ export function usePageSwipe({
     const from = pageRef.current;
     const target = targetPage(from, dir);
     session.cutCurl();
-    session.beginGesture();
+    // Keep the leaf on the page the sheet will show. Committing first paints the
+    // next page, and the curl then covers that with the previous one.
+    flushSync(() => onAlignRef.current(from));
     session.setTurn(dir);
-    session.ensureCurl(dir, from, target, true);
+    const curling = session.ensureCurl(dir, from, target, true);
+    session.beginGesture();
     session.finishCommit(target);
+    if (!curling) onCoveredRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
