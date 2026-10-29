@@ -7,6 +7,8 @@ export type TurnSlots = {
   /** Page kept in the curl hole after the index advances. Null once the curl is gone. */
   hole: number | null;
   holeDir: TurnDirection | null;
+  /** Bumped when a gesture starts so a late settle from the previous turn is ignored. */
+  gen: number;
 };
 
 export type TurnAction =
@@ -14,10 +16,21 @@ export type TurnAction =
   | { type: 'move' }
   | { type: 'drop'; dir: TurnDirection }
   | { type: 'cancel' }
-  | { type: 'settle' };
+  | { type: 'settle'; gen?: number };
 
-export function slotsForPage(page: number): TurnSlots {
-  return { leaf: page, next: page + 1, prev: page - 1, hole: null, holeDir: null };
+export function slotsForPage(page: number, gen = 0): TurnSlots {
+  return { leaf: page, next: page + 1, prev: page - 1, hole: null, holeDir: null, gen };
+}
+
+/** Drop the pinned hole so the neighbor under the curl is the real next or previous page. */
+export function beginTurn(slots: TurnSlots, gen = slots.gen + 1): TurnSlots {
+  return slotsForPage(slots.leaf, gen);
+}
+
+/** Clear the hole only if this settle still belongs to the gesture that opened it. */
+export function settleTurn(slots: TurnSlots, gen: number): TurnSlots {
+  if (slots.gen !== gen) return slots;
+  return slotsForPage(slots.leaf, slots.gen);
 }
 
 /** The neighbor the hole is showing. A commit must not advance this a second time. */
@@ -47,12 +60,15 @@ export function commitTurnSlots(current: TurnSlots, page: number): TurnSlots {
     prev: page - 1,
     hole: page,
     holeDir,
+    gen: current.gen,
   };
 }
 
 export function reduceTurn(slots: TurnSlots, action: TurnAction, pageCount: number): TurnSlots {
-  if (action.type === 'drag-start' || action.type === 'move') return slots;
-  if (action.type === 'cancel' || action.type === 'settle') return slotsForPage(slots.leaf);
+  if (action.type === 'drag-start') return beginTurn(slots);
+  if (action.type === 'move') return slots;
+  if (action.type === 'cancel') return slotsForPage(slots.leaf, slots.gen);
+  if (action.type === 'settle') return settleTurn(slots, action.gen ?? slots.gen);
   if (isEdgeBlocked(action.dir, slots.leaf, pageCount)) return slots;
   return commitTurnSlots(slots, targetPage(slots.leaf, action.dir));
 }
