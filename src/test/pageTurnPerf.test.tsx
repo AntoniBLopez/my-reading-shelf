@@ -183,22 +183,21 @@ describe('page turn performance', () => {
     expect(added).toContainEqual({ type: 'touchmove', passive: false });
   });
 
-  it('GIVEN a touch screen WHEN the stage mounts THEN only the neighbor pages render at a lower resolution', () => {
+  it('GIVEN a touch screen WHEN the stage mounts THEN the revealed page uses the settled page resolution', () => {
     window.matchMedia = media(true);
     render(<Reader initialPage={3} />);
     const pages = pageRender.mock.calls.map(([page, ratio]) => ({ page, ratio }));
     expect(pages.map((entry) => entry.page).sort()).toEqual([2, 3, 4]);
-    expect(pages.find((entry) => entry.page === 3)?.ratio).toBe(2);
-    expect(pages.filter((entry) => entry.page !== 3).every((entry) => entry.ratio === 1)).toBe(true);
+    expect(pages.every((entry) => entry.ratio === 2)).toBe(true);
   });
 
-  it('GIVEN a desktop screen WHEN the stage mounts THEN the page keeps the screen ratio', () => {
+  it('GIVEN a desktop screen WHEN the stage mounts THEN the revealed page keeps the screen ratio', () => {
     window.matchMedia = media(false);
     render(<Reader initialPage={3} />);
     const leaf = pageRender.mock.calls.find(([page]) => page === 3);
     const neighbor = pageRender.mock.calls.find(([page]) => page === 4);
     expect(leaf?.[1]).toBe(3);
-    expect(neighbor?.[1]).toBe(2);
+    expect(neighbor?.[1]).toBe(3);
     expect(pageRender.mock.calls.some(([page]) => page === 5 || page === 1)).toBe(false);
   });
 });

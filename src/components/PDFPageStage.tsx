@@ -69,8 +69,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const themeKey = resolvedTheme === 'dark' ? 'dark' : 'light';
   const touchPrimary = useCoarsePointer();
   const pixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
-  const leafPixelRatio = pageDevicePixelRatio(pixelRatio, touchPrimary, 'leaf');
-  const neighborPixelRatio = pageDevicePixelRatio(pixelRatio, touchPrimary, 'neighbor');
+  const pageRatio = pageDevicePixelRatio(pixelRatio, touchPrimary, 'leaf');
 
   const commitPage = (page: number) => {
     // Keep the page on either side mounted so the next turn already has a bitmap.
@@ -177,19 +176,19 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         >
           {inBook(slots.prev) && (
             <div className="pdf-turn-under pdf-turn-under--prev" aria-hidden>
-              <Page {...pageProps} devicePixelRatio={neighborPixelRatio} key={`${themeKey}-${slots.prev}`} pageNumber={slots.prev} renderTextLayer={false} renderAnnotationLayer={false} onRenderSuccess={handleLeafRender} />
+              <Page {...pageProps} devicePixelRatio={pageRatio} key={`${themeKey}-${slots.prev}`} pageNumber={slots.prev} renderTextLayer={false} renderAnnotationLayer={false} onRenderSuccess={handleLeafRender} />
             </div>
           )}
           {inBook(slots.next) && (
             <div className="pdf-turn-under pdf-turn-under--next" aria-hidden>
-              <Page {...pageProps} devicePixelRatio={neighborPixelRatio} key={`${themeKey}-${slots.next}`} pageNumber={slots.next} renderTextLayer={false} renderAnnotationLayer={false} onRenderSuccess={handleLeafRender} />
+              <Page {...pageProps} devicePixelRatio={pageRatio} key={`${themeKey}-${slots.next}`} pageNumber={slots.next} renderTextLayer={false} renderAnnotationLayer={false} onRenderSuccess={handleLeafRender} />
             </div>
           )}
           <div ref={leafRef} className="pdf-turn-leaf">
             <div className="pdf-turn-face pdf-turn-face--front">
               <Page
                 {...pageProps}
-                devicePixelRatio={leafPixelRatio}
+                devicePixelRatio={pageRatio}
                 key={`${themeKey}-${slots.leaf}`}
                 pageNumber={slots.leaf}
                 renderTextLayer
