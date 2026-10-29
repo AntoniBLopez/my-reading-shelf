@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { PwaAutoReload } from "@/components/PwaAutoReload";
 import { TapRipple } from "@/components/ui/tap-ripple";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -18,6 +19,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter basename={import.meta.env.VITE_BASE_PATH || "/my-reading-shelf"}>
+          <PwaAutoReload />
           <Routes>
             <Route path="/" element={<Index />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
