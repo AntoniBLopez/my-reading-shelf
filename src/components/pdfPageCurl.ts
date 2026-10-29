@@ -1,4 +1,6 @@
 import { PageFlip } from 'page-flip/dist/js/page-flip.module.js';
+import { adaptCurlCanvas, enableRetinaCurlCanvas, paintBlankBack, punchRevealedPage, type FoldingPage } from '@/components/curlOverlay';
+import { BLANK_REVEALED_PAGE, shouldSnapshotForCurl, snapshotCanvas } from '@/components/curlSheetBitmap';
 
 export type CurlPoint = { x: number; y: number };
 
@@ -25,218 +27,15 @@ type CreatePageCurlArgs = {
   flippingTime?: number;
 };
 
-function invertPixels(context: CanvasRenderingContext2D, width: number, height: number) {
-  const image = context.getImageData(0, 0, width, height);
-  const data = image.data;
-  for (let index = 0; index < data.length; index += 4) {
-    data[index] = 255 - data[index];
-    data[index + 1] = 255 - data[index + 1];
-    data[index + 2] = 255 - data[index + 2];
-  }
-  context.putImageData(image, 0, 0);
-}
-
-/** Long edge of the curl bitmap. A full retina PNG encode was stalling the turn for seconds. */
-const SNAPSHOT_MAX_EDGE = 1400;
-
-/** One bitmap per gesture. Object URLs avoid a synchronous base64 encode on the drag. */
-async function snapshotCanvas(source: HTMLCanvasElement, invert: boolean, mirror: boolean): Promise<string> {
-  const width = Math.max(1, source.width);
-  const height = Math.max(1, source.height);
-  const scale = Math.min(1, SNAPSHOT_MAX_EDGE / Math.max(width, height));
-  const copy = document.createElement('canvas');
-  copy.width = Math.max(1, Math.round(width * scale));
-  copy.height = Math.max(1, Math.round(height * scale));
-  const context = copy.getContext('2d', { willReadFrequently: invert });
-  if (!context) return source.toDataURL('image/jpeg', 0.86);
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = 'high';
-  if (mirror) {
-    context.translate(copy.width, 0);
-    context.scale(-1, 1);
-  }
-  context.drawImage(source, 0, 0, copy.width, copy.height);
-  // Pixel invert, not ctx.filter: mobile browsers often ignore the filter and the sheet stays light.
-  if (invert) invertPixels(context, copy.width, copy.height);
-  const blob = await new Promise<Blob | null>((resolve) => {
-    if (!copy.toBlob) {
-      resolve(null);
-      return;
-    }
-    // toBlob sometimes never calls back. The page turn must not wait on it.
-    const timer = window.setTimeout(() => resolve(null), 240);
-    copy.toBlob((value) => {
-      window.clearTimeout(timer);
-      resolve(value);
-    }, 'image/jpeg', 0.86);
-  });
-  if (!blob) return copy.toDataURL('image/jpeg', 0.86);
-  return URL.createObjectURL(blob);
-}
-
-type FoldingPage = {
-  state: {
-    area: Array<{ x: number; y: number } | null>;
-    position: { x: number; y: number };
-    angle: number;
-  };
-  render: {
-    getContext: () => CanvasRenderingContext2D;
-    convertToGlobal: (point: { x: number; y: number }) => { x: number; y: number };
-  };
-  draw: () => void;
-};
-
-/** Back of the folding sheet only. The flat front face still uses the page image. */
-function paintBlankBack(page: FoldingPage, dark: boolean) {
-  const context = page.render.getContext();
-  const origin = page.render.convertToGlobal(page.state.position);
-  context.save();
-  context.translate(origin.x, origin.y);
-  context.beginPath();
-  let moved = false;
-  for (const point of page.state.area) {
-    if (!point) continue;
-    const global = page.render.convertToGlobal(point);
-    context.lineTo(global.x - origin.x, global.y - origin.y);
-    moved = true;
-  }
-  if (moved) {
-    context.closePath();
-    context.rotate(page.state.angle);
-    context.fillStyle = dark ? '#000000' : '#ffffff';
-    context.fill();
-  }
-  context.restore();
-}
-
-function isOpaqueWhite(style: CanvasRenderingContext2D['fillStyle']): boolean {
-  if (typeof style !== 'string') return false;
-  const value = style.replace(/\s/g, '').toLowerCase();
-  return value === 'white' || value === '#fff' || value === '#ffffff' || value === 'rgb(255,255,255)';
-}
-
-function shadowAlpha(color: string): number | null {
-  const match = /rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*([0-9.]+)\s*\)/i.exec(color);
-  if (!match) return null;
-  const alpha = Number(match[1]);
-  return Number.isFinite(alpha) ? alpha : null;
-}
-
-/** Light mode: keep the black crease, but well below the library's 0.5 default. */
-function softenLightShadow(color: string): string {
-  const alpha = shadowAlpha(color);
-  if (alpha == null) return color;
-  return `rgba(0, 0, 0, ${Math.min(0.18, alpha * 0.36).toFixed(3)})`;
-}
-
-/** Dark mode: a black crease on a black page disappears. Use a faint light edge instead. */
-function softenDarkShadow(color: string): string {
-  const alpha = shadowAlpha(color);
-  if (alpha == null) return color;
-  return `rgba(255, 255, 255, ${Math.min(0.14, alpha * 0.28).toFixed(3)})`;
-}
-
-type CurlFlipUi = {
-  resizeCanvas?: () => void;
-  getCanvas?: () => HTMLCanvasElement;
-};
-
-type CurlFlipRender = {
-  canvas?: HTMLCanvasElement;
-  drawFrame?: () => void;
-  clear?: () => void;
-  getContext?: () => CanvasRenderingContext2D;
-};
-
-/** page-flip renders its canvas at CSS pixels; scale it up for crisp text on retina displays. */
-function enableRetinaCurlCanvas(
-  host: HTMLElement,
-  flip: PageFlip,
-  cssWidth: number,
-  cssHeight: number,
-  dark: boolean
-) {
-  const ui = (flip as { getUI?: () => CurlFlipUi }).getUI?.();
-  const render = (flip as { getRender?: () => CurlFlipRender }).getRender?.();
-  const canvas = ui?.getCanvas?.() ?? host.querySelector('canvas');
-  const context = render?.getContext?.();
-  if (!canvas || !context || !render?.drawFrame || !render.clear) return;
-
-  const cssW = Math.max(1, Math.round(cssWidth));
-  const cssH = Math.max(1, Math.round(cssHeight));
-  // The curl shape stays the same. Capping the bitmap keeps a 3x phone from repainting a huge canvas each frame.
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-  const syncCanvas = () => {
-    const physicalW = Math.max(1, Math.round(cssW * dpr));
-    const physicalH = Math.max(1, Math.round(cssH * dpr));
-    if (canvas.width !== physicalW || canvas.height !== physicalH) {
-      canvas.width = physicalW;
-      canvas.height = physicalH;
-    }
-    canvas.style.width = `${cssW}px`;
-    canvas.style.height = `${cssH}px`;
-  };
-
-  if (ui) ui.resizeCanvas = syncCanvas;
-  syncCanvas();
-
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = 'high';
-
-  render.clear = () => {
-    context.save();
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.fillStyle = dark ? '#000000' : '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.restore();
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  };
-
-  const originalDrawFrame = render.drawFrame.bind(render);
-  render.drawFrame = () => {
-    syncCanvas();
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    originalDrawFrame();
-  };
-}
-
-function adaptCurlCanvas(host: HTMLElement, dark: boolean) {
-  const canvas = host.querySelector('canvas');
-  const context = canvas?.getContext('2d');
-  if (!context) return;
-
-  const soften = dark ? softenDarkShadow : softenLightShadow;
-  const createLinearGradient = context.createLinearGradient.bind(context);
-  context.createLinearGradient = (x0, y0, x1, y1) => {
-    const gradient = createLinearGradient(x0, y0, x1, y1);
-    const addColorStop = gradient.addColorStop.bind(gradient);
-    gradient.addColorStop = (offset, color) => {
-      addColorStop(offset, soften(String(color)));
-    };
-    return gradient;
-  };
-
-  if (!dark) return;
-
-  const fillRect = context.fillRect.bind(context);
-  context.fillRect = (x, y, width, height) => {
-    if (!isOpaqueWhite(context.fillStyle)) {
-      fillRect(x, y, width, height);
-      return;
-    }
-    const previous = context.fillStyle;
-    context.fillStyle = '#000000';
-    fillRect(x, y, width, height);
-    context.fillStyle = previous;
-  };
-}
-
 export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurlSession> {
   const mirror = args.direction === 'prev';
-  const currentUrl = await snapshotCanvas(args.current, args.invert, mirror);
-  const otherUrl = await snapshotCanvas(args.other, args.invert, mirror);
+  const currentUrl = shouldSnapshotForCurl('sheet')
+    ? await snapshotCanvas(args.current, args.invert, mirror)
+    : BLANK_REVEALED_PAGE;
+  // The page underneath is the live PDF canvas. A snapshot here is what made the reveal soft.
+  const otherUrl = shouldSnapshotForCurl('revealed')
+    ? await snapshotCanvas(args.other, args.invert, mirror)
+    : BLANK_REVEALED_PAGE;
   const snapshotUrls = [currentUrl, otherUrl];
   if (args.isCancelled?.() || !args.scene.isConnected) {
     for (const url of snapshotUrls) {
@@ -422,6 +221,8 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   enableRetinaCurlCanvas(host, flip, args.width, args.height, args.invert);
   const folding = flip.getPage(0) as FoldingPage;
   folding.draw = () => paintBlankBack(folding, args.invert);
+  const revealed = flip.getPage(1) as FoldingPage;
+  revealed.draw = () => punchRevealedPage(revealed);
   adaptCurlCanvas(host, args.invert);
   host.querySelector('canvas')?.style.setProperty('filter', 'none', 'important');
   window.setTimeout(reveal, 80);
