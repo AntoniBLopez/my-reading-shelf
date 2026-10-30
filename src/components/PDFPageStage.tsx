@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObject } from 'react';
 import { useTheme } from 'next-themes';
 import { Document, pdfjs } from 'react-pdf';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -46,6 +46,8 @@ interface PDFPageStageProps {
   showBookBorder: boolean;
   getCanTurn: () => boolean;
   panFree?: boolean;
+  /** Padding around the book. A press here starts the same curl as a press on the page. */
+  gestureSurfaceRef?: RefObject<HTMLElement | null>;
   onCommit: (page: number) => void;
   onTurnActive?: (active: boolean) => void;
   onDocumentLoadSuccess: (pdf: ReadablePdf) => void;
@@ -87,12 +89,13 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   const pageNumberRef = useRef(props.pageNumber);
   pageNumberRef.current = props.pageNumber;
 
-  const { onPointerDown, turn, cancel, settle, isLocked } = usePageSwipe({
+  const { turn, cancel, settle, isLocked } = usePageSwipe({
     page: props.pageNumber,
     pageCount: props.numPages,
     enabled: props.getCanTurn,
     leafRef,
     sceneRef,
+    surfaceRef: props.gestureSurfaceRef,
     onCommit: commitPage,
     onBegin: (gen) => {
       genRef.current = gen;
@@ -208,7 +211,6 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
           className={cn('pdf-turn-scene', props.panFree && 'pdf-turn-scene--free')}
           data-committed={slots.leaf}
           data-face={face}
-          onPointerDown={onPointerDown}
         >
           {[...neighbors.entries()].map(([page, className]) => (
             <TurnSlot key={page} {...slotProps} pageNumber={page} className={className} text={false} />

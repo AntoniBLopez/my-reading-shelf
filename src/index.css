@@ -273,6 +273,11 @@
   will-change: transform;
 }
 
+/* Margin around the page is part of the curl gesture. Vertical pans still scroll. */
+.pdf-reader-surface:not(.pdf-viewer-selecting):not(.touch-none) {
+  touch-action: pan-y;
+}
+
 .pdf-turn-scene {
   position: relative;
   overflow: hidden;

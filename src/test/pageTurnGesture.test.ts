@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   COMMIT_PROGRESS,
   COMMIT_VELOCITY,
+  clampPointerToBox,
   directionFromDx,
   DRAG_START_PX,
   gesturePhase,
   isEdgeBlocked,
+  isTurnBlockedTarget,
   leafOffsetPx,
   nextVelocity,
   releaseOffsetPx,
@@ -91,6 +93,36 @@ describe('page turn gesture', () => {
     expect(turnDirectionFromKey('ArrowDown')).toBe('prev');
     expect(turnDirectionFromKey('f')).toBeNull();
     expect(turnDirectionFromKey('Escape')).toBeNull();
+  });
+
+  it('should clamp a margin press onto the book so the curl meets the finger', () => {
+    const book = { left: 40, top: 20, right: 340, bottom: 420 };
+    expect(clampPointerToBox(12, 80, book)).toEqual({ x: 40, y: 80 });
+    expect(clampPointerToBox(400, 10, book)).toEqual({ x: 340, y: 20 });
+    expect(clampPointerToBox(120, 200, book)).toEqual({ x: 120, y: 200 });
+  });
+
+  it('should leave toolbar controls, menus, links and fields out of the page turn', () => {
+    const host = document.createElement('div');
+    const link = document.createElement('a');
+    const field = document.createElement('input');
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    const item = document.createElement('div');
+    item.setAttribute('role', 'menuitem');
+    menu.append(item);
+    const chrome = document.createElement('div');
+    chrome.setAttribute('data-reader-chrome', '');
+    const label = document.createElement('span');
+    chrome.append(label);
+    const page = document.createElement('div');
+    host.append(link, field, menu, chrome, page);
+    expect(isTurnBlockedTarget(link)).toBe(true);
+    expect(isTurnBlockedTarget(field)).toBe(true);
+    expect(isTurnBlockedTarget(item)).toBe(true);
+    expect(isTurnBlockedTarget(label)).toBe(true);
+    expect(isTurnBlockedTarget(page)).toBe(false);
+    expect(isTurnBlockedTarget(null)).toBe(false);
   });
 
   it('should apply every rapid turn instead of keeping the page that is still curling', () => {

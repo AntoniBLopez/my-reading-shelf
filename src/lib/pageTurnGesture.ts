@@ -21,6 +21,29 @@ export function directionFromDx(dx: number): TurnDirection {
   return dx < 0 ? 'next' : 'prev';
 }
 
+export type PointerBox = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
+
+/** Keep a press in the margin on the book edge so the curl stays under the finger. */
+export function clampPointerToBox(x: number, y: number, box: PointerBox): { x: number; y: number } {
+  return {
+    x: Math.min(Math.max(x, box.left), box.right),
+    y: Math.min(Math.max(y, box.top), box.bottom),
+  };
+}
+
+const TURN_BLOCKED_TARGET =
+  'a,button,input,textarea,select,option,label,summary,[role="button"],[role="link"],[role="menu"],[role^="menuitem"],[role="tab"],[role="toolbar"],[role="listbox"],[role="option"],[role="combobox"],[contenteditable]:not([contenteditable="false"]),[data-reader-chrome]';
+
+/** Toolbar, arrows, menus, links, and fields keep their own gestures. */
+export function isTurnBlockedTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(TURN_BLOCKED_TARGET) != null;
+}
+
 export function isEdgeBlocked(dir: TurnDirection, page: number, pageCount: number): boolean {
   if (pageCount < 1) return true;
   if (dir === 'next') return page >= pageCount;
