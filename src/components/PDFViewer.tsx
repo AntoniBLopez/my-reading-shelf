@@ -933,7 +933,7 @@ function PDFViewerComponent({
         onInteractOutside={(event) => guardReaderFullscreenClick(fullscreenRef.current, event)}
       >
         {!isFullscreen && (
-        <DialogHeader className="px-4 py-3 border-b bg-muted/50">
+        <DialogHeader className="px-4 py-3 border-b bg-muted/50" data-reader-chrome="">
           <div className="flex items-center justify-between">
             <DialogTitle className="font-serif flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-primary" />
@@ -974,7 +974,10 @@ function PDFViewerComponent({
           )}
           {/* Toolbar: responsive — wraps to 2 rows on small screens so all controls fit; en fullscreen se puede ocultar con doble toque en tablet/móvil */}
           {(!isFullscreen || fullscreenHeaderVisible) && (
-          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 px-2 sm:px-4 py-2 border-b bg-background shrink-0 min-w-0">
+          <div
+            className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 px-2 sm:px-4 py-2 border-b bg-background shrink-0 min-w-0"
+            data-reader-chrome=""
+          >
             {/* Pagination */}
             <div className="flex items-center gap-1 sm:gap-2 min-w-0 shrink-0">
               <Button
@@ -1091,9 +1094,10 @@ function PDFViewerComponent({
           >
             <div
               ref={containerRef}
+              data-reader-surface=""
               className={cn(
-                'relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 bg-white dark:bg-black',
-                textSelected ? 'pdf-viewer-selecting' : isAtBaseZoom ? 'touch-manipulation' : 'touch-none'
+                'pdf-reader-surface relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 bg-white dark:bg-black',
+                textSelected ? 'pdf-viewer-selecting' : !isAtBaseZoom && 'touch-none'
               )}
               onPointerDown={handlePointerDown}
               onDoubleClick={handleDoubleClick}
@@ -1141,6 +1145,7 @@ function PDFViewerComponent({
                     showBookBorder={showBookBorder}
                     getCanTurn={getCanTurn}
                     panFree={!isAtBaseZoom}
+                    gestureSurfaceRef={containerRef}
                     onCommit={goToPage}
                     onDocumentLoadSuccess={onDocumentLoadSuccess}
                     onDocumentLoadError={onDocumentLoadError}
@@ -1155,7 +1160,7 @@ function PDFViewerComponent({
 
         {/* Footer with page info — hidden in fullscreen to maximize PDF area */}
         {!isFullscreen && (
-        <div className="px-4 py-2 border-t bg-muted/50 text-center text-sm text-muted-foreground">
+        <div className="px-4 py-2 border-t bg-muted/50 text-center text-sm text-muted-foreground" data-reader-chrome="">
           {pageNumber === numPages && numPages > 0 ? (
             <span className="text-success font-medium">🎉 ¡Has llegado al final!</span>
           ) : (

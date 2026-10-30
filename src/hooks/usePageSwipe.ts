@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import {
+  clampPointerToBox,
   directionFromDx,
   gesturePhase,
   isEdgeBlocked,
+  isTurnBlockedTarget,
   nextVelocity,
   shouldCommitTurn,
   targetPage,
   turnProgress,
+  type PointerBox,
   type TurnDirection,
 } from '@/lib/pageTurnGesture';
 import { PageTurnSession, type CurlGesture } from '@/hooks/pageTurnSession';
@@ -20,7 +23,23 @@ type Gesture = CurlGesture & {
   vx: number;
   dir: TurnDirection | null;
   top: number;
+  bounds: PointerBox | null;
 };
+
+function measureBook(node: HTMLElement | null): { bounds: PointerBox; width: number; height: number } | null {
+  const box = node?.getBoundingClientRect();
+  if (!box || box.width < 1 || box.height < 1) return null;
+  return {
+    bounds: { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
+    width: box.width,
+    height: box.height,
+  };
+}
+
+function readerSurface(scene: HTMLElement | null): HTMLElement | null {
+  const surface = scene?.closest('[data-reader-surface]');
+  return surface instanceof HTMLElement ? surface : scene;
+}
 
 type UsePageSwipeArgs = {
   page: number;
@@ -28,6 +47,7 @@ type UsePageSwipeArgs = {
   enabled: () => boolean;
   leafRef: RefObject<HTMLElement | null>;
   sceneRef: RefObject<HTMLElement | null>;
+  surfaceRef?: RefObject<HTMLElement | null>;
   onCommit: (page: number) => void;
   onBegin?: (gen: number) => void;
   onSettled?: (gen: number) => void;
@@ -44,6 +64,7 @@ export function usePageSwipe({
   enabled,
   leafRef,
   sceneRef,
+  surfaceRef,
   onCommit,
   onBegin,
   onSettled,
@@ -75,6 +96,7 @@ export function usePageSwipe({
   const rafRef = useRef(0);
   const pendingDirRef = useRef<TurnDirection | null>(null);
   const touchArmedRef = useRef(false);
+  const touchHostRef = useRef<HTMLElement | null>(null);
 
   const blockTouchRef = useRef((event: TouchEvent) => {
     if (!gestureRef.current?.active || !event.cancelable) return;
@@ -88,10 +110,11 @@ export function usePageSwipe({
   };
 
   const disarmTouch = () => {
-    const scene = sceneRef.current;
-    if (!scene || !touchArmedRef.current) return;
-    scene.removeEventListener('touchmove', blockTouchRef.current);
+    const host = touchHostRef.current;
+    if (!host || !touchArmedRef.current) return;
+    host.removeEventListener('touchmove', blockTouchRef.current);
     touchArmedRef.current = false;
+    touchHostRef.current = null;
   };
 
   const sessionRef = useRef<PageTurnSession | null>(null);
@@ -112,10 +135,11 @@ export function usePageSwipe({
   const session = sessionRef.current;
 
   const armTouch = () => {
-    const scene = sceneRef.current;
-    if (!scene || touchArmedRef.current) return;
-    scene.addEventListener('touchmove', blockTouchRef.current, { passive: false });
+    const host = readerSurface(sceneRef.current);
+    if (!host || touchArmedRef.current) return;
+    host.addEventListener('touchmove', blockTouchRef.current, { passive: false });
     touchArmedRef.current = true;
+    touchHostRef.current = host;
   };
 
   const drawFollow = () => {
@@ -177,8 +201,11 @@ export function usePageSwipe({
         session.resetSheet();
         return;
       }
-      const dx = event.clientX - gesture.startX;
-      const dy = event.clientY - gesture.startY;
+      const point = gesture.bounds
+        ? clampPointerToBox(event.clientX, event.clientY, gesture.bounds)
+        : { x: event.clientX, y: event.clientY };
+      const dx = point.x - gesture.startX;
+      const dy = point.y - gesture.startY;
       if (!gesture.active) {
         const phase = gesturePhase(dx, dy);
         if (phase === 'vertical') {
@@ -195,9 +222,9 @@ export function usePageSwipe({
       }
       if (!gesture.dir) return;
       const now = performance.now();
-      gesture.vx = nextVelocity(gesture.vx, gesture.lastX, event.clientX, gesture.lastT, now);
-      gesture.lastX = event.clientX;
-      gesture.lastY = event.clientY;
+      gesture.vx = nextVelocity(gesture.vx, gesture.lastX, point.x, gesture.lastT, now);
+      gesture.lastX = point.x;
+      gesture.lastY = point.y;
       gesture.lastT = now;
       const blocked = isEdgeBlocked(gesture.dir, pageRef.current, pageCountRef.current);
       scheduleFollow(blocked ? null : gesture.dir);
@@ -208,10 +235,49 @@ export function usePageSwipe({
       if (!gesture || event.pointerId !== gesture.pointerId) return;
       releaseGesture();
     };
+    const onPointerDown = (event: PointerEvent) => {
+      if (isTurnBlockedTarget(event.target)) return;
+      pointersRef.current.add(event.pointerId);
+      if (pointersRef.current.size > 1) {
+        pointersRef.current.delete(event.pointerId);
+        if (gestureRef.current && !session.isLocked()) session.resetSheet();
+        return;
+      }
+      if (gestureRef.current) return;
+      if (!enabledRef.current()) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) {
+        pointersRef.current.delete(event.pointerId);
+        return;
+      }
+      const book = measureBook(leafRef.current);
+      if (!book) {
+        pointersRef.current.delete(event.pointerId);
+        return;
+      }
+      const point = clampPointerToBox(event.clientX, event.clientY, book.bounds);
+      gestureRef.current = {
+        pointerId: event.pointerId,
+        startX: point.x,
+        startY: point.y,
+        lastX: point.x,
+        lastY: point.y,
+        lastT: performance.now(),
+        vx: 0,
+        dir: null,
+        active: false,
+        width: book.width,
+        height: book.height,
+        top: book.bounds.top,
+        bounds: book.bounds,
+      };
+    };
+    const surface = surfaceRef?.current ?? readerSurface(sceneRef.current);
+    surface?.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
     return () => {
+      surface?.removeEventListener('pointerdown', onPointerDown);
       session.dispose();
       cancelFollow();
       disarmTouch();
@@ -222,36 +288,6 @@ export function usePageSwipe({
     // The session and the listeners read the latest page through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    pointersRef.current.add(event.pointerId);
-    if (pointersRef.current.size > 1) {
-      pointersRef.current.delete(event.pointerId);
-      if (gestureRef.current && !session.isLocked()) session.resetSheet();
-      return;
-    }
-    if (gestureRef.current) return;
-    if (!enabledRef.current()) return;
-    if (event.pointerType === 'mouse' && event.button != null && event.button !== 0) return;
-    const target = event.target;
-    if (target instanceof Element && target.closest('a, button, input, textarea, select')) return;
-    const box = leafRef.current?.getBoundingClientRect();
-    gestureRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      lastT: performance.now(),
-      vx: 0,
-      dir: null,
-      active: false,
-      width: Math.max(1, box?.width || 1),
-      height: Math.max(1, box?.height || 1),
-      top: box?.top || 0,
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leafRef]);
 
   const turn = useCallback((dir: TurnDirection) => {
     if (gestureRef.current?.active) return;
@@ -278,5 +314,5 @@ export function usePageSwipe({
 
   const isLocked = useCallback(() => session.isLocked(), [session]);
 
-  return { onPointerDown, turn, cancel, settle: session.settle, isLocked };
+  return { turn, cancel, settle: session.settle, isLocked };
 }

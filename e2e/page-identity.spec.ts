@@ -1,7 +1,9 @@
+import { mkdirSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const WORDS = ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA'];
+const ARTIFACTS = '/opt/cursor/artifacts';
 
 async function identityPdf(): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
@@ -148,6 +150,27 @@ async function expectSamePageAfterDrop(page: Page, revealed: string, word: strin
   }, { timeout: 8_000 }).toBe('settled');
 }
 
+async function dragFromMargin(page: Page, title: string) {
+  mkdirSync(ARTIFACTS, { recursive: true });
+  const canvas = page.locator('.pdf-turn-leaf canvas');
+  const box = await canvas.boundingBox();
+  const surface = await page.locator('[data-reader-surface]').boundingBox();
+  if (!box || !surface) throw new Error('missing page');
+  const right = Math.min(box.x + box.width + 8, surface.x + surface.width - 2);
+  const below = Math.min(box.y + box.height + 8, surface.y + surface.height - 2);
+  const start = right > box.x + box.width + 1
+    ? { x: right, y: box.y + Math.min(box.height * 0.62, surface.y + surface.height - box.y - 2) }
+    : { x: box.x + box.width * 0.72, y: below };
+  expect(start.x > box.x + box.width || start.y > box.y + box.height).toBe(true);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.22, box.y + box.height * 0.48, { steps: 18 });
+  await expect(page.locator('.pdf-page-curl--ready')).toBeVisible({ timeout: 8_000 });
+  const shot = title.includes('phone') ? 'margin-curl-phone' : 'margin-curl-desktop';
+  await page.screenshot({ path: `${ARTIFACTS}/${shot}-mid-drag.png` });
+  return shot;
+}
+
 function cases(title: string) {
   test(`GIVEN page one WHEN the next page is dragged and dropped THEN that same page stays ${title}`, async ({ page }) => {
     await openBook(page, 1);
@@ -165,6 +188,17 @@ function cases(title: string) {
     expect(mid.prev).toBe('1');
     expect(mid.text).toContain('BRAVO');
     await expectSamePageAfterDrop(page, '1', 'ALPHA', 'prev');
+  });
+
+  test(`GIVEN page one WHEN the drag starts outside the book THEN the revealed page stays ${title}`, async ({ page }) => {
+    await openBook(page, 1);
+    const shot = await dragFromMargin(page, title);
+    const mid = await readIdentity(page);
+    expect(mid.leaf).toBe('1');
+    expect(mid.next).toBe('2');
+    expect(mid.text).toContain('ALPHA');
+    await expectSamePageAfterDrop(page, '2', 'BRAVO', 'next');
+    await page.screenshot({ path: `${ARTIFACTS}/${shot}-settled.png` });
   });
 
   test(`GIVEN page one WHEN the drag is cancelled THEN the original text stays ${title}`, async ({ page }) => {
