@@ -239,16 +239,19 @@ async function expectSharpHold(page: Page, shot: string) {
 test.describe('desktop reveal', () => {
   test.use({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 3 });
 
-  test('GIVEN a desktop page WHEN a drag reveals the next page THEN that page stays as sharp as the settled page', async ({ page }) => {
+  test('GIVEN a desktop page WHEN the pointer is dragged THEN the page does not curl', async ({ page }) => {
     await openSharpBook(page);
-    await expectSharpHold(page, 'page-reveal-after');
-  });
-
-  test('GIVEN dark mode WHEN a drag reveals the next page THEN that page stays as sharp as the settled page', async ({ page }) => {
-    await openSharpBook(page);
-    await page.getByRole('dialog').locator('button[title="Modo oscuro"]').click();
-    await expect(page.locator('html')).toHaveClass(/dark/);
-    await expectSharpHold(page, 'page-reveal-after-dark');
+    const canvas = page.locator('.pdf-turn-leaf canvas');
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('missing page');
+    await page.mouse.move(box.x + box.width - 28, box.y + box.height * 0.62);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.28, box.y + box.height * 0.48, { steps: 18 });
+    await expect(page.locator('.pdf-page-curl--ready')).toHaveCount(0);
+    await page.mouse.up();
+    await expect(page.locator('.pdf-turn-leaf')).toContainText('Page one stays here.');
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('canvas[data-page="2"]')).toBeVisible({ timeout: 8_000 });
   });
 });
 

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import {
+  allowsPageDrag,
   clampPointerToBox,
   directionFromDx,
   gesturePhase,
   isEdgeBlocked,
+  isTouchPrimaryInput,
   isTurnBlockedTarget,
   nextVelocity,
   shouldCommitTurn,
@@ -14,6 +16,7 @@ import {
   type TurnDirection,
 } from '@/lib/pageTurnGesture';
 import { PageTurnSession, type CurlGesture } from '@/hooks/pageTurnSession';
+import { bindPageTurnRecovery } from '@/lib/pageTurnRecovery';
 
 type Gesture = CurlGesture & {
   pointerId: number;
@@ -235,8 +238,14 @@ export function usePageSwipe({
       if (!gesture || event.pointerId !== gesture.pointerId) return;
       releaseGesture();
     };
+    const recover = () => {
+      pointersRef.current.clear();
+      session.recover();
+    };
     const onPointerDown = (event: PointerEvent) => {
       if (isTurnBlockedTarget(event.target)) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (!allowsPageDrag(event.pointerType, isTouchPrimaryInput())) return;
       pointersRef.current.add(event.pointerId);
       if (pointersRef.current.size > 1) {
         pointersRef.current.delete(event.pointerId);
@@ -245,10 +254,6 @@ export function usePageSwipe({
       }
       if (gestureRef.current) return;
       if (!enabledRef.current()) return;
-      if (event.pointerType === 'mouse' && event.button !== 0) {
-        pointersRef.current.delete(event.pointerId);
-        return;
-      }
       const book = measureBook(leafRef.current);
       if (!book) {
         pointersRef.current.delete(event.pointerId);
@@ -270,13 +275,31 @@ export function usePageSwipe({
         top: book.bounds.top,
         bounds: book.bounds,
       };
+      const capture = event.currentTarget;
+      if (capture instanceof HTMLElement) {
+        try {
+          capture.setPointerCapture(event.pointerId);
+        } catch {
+          // The pointer can already have been released.
+        }
+      }
     };
+    const watchStaleDrag = window.setInterval(() => {
+      const gesture = gestureRef.current;
+      if (!gesture?.active || document.visibilityState === 'hidden') return;
+      if (performance.now() - gesture.lastT < 4000) return;
+      recover();
+    }, 1000);
     const surface = surfaceRef?.current ?? readerSurface(sceneRef.current);
+    const unbindRecovery = bindPageTurnRecovery(recover, recover);
     surface?.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
+    window.addEventListener('lostpointercapture', onUp);
     return () => {
+      unbindRecovery();
+      window.clearInterval(watchStaleDrag);
       surface?.removeEventListener('pointerdown', onPointerDown);
       session.dispose();
       cancelFollow();
@@ -284,13 +307,19 @@ export function usePageSwipe({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('lostpointercapture', onUp);
     };
     // The session and the listeners read the latest page through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const turn = useCallback((dir: TurnDirection) => {
-    if (gestureRef.current?.active) return;
+    const gesture = gestureRef.current;
+    if (gesture?.active) {
+      const abandoned = document.visibilityState === 'hidden' || performance.now() - gesture.lastT > 4000;
+      if (!abandoned) return;
+      session.recover();
+    }
     if (!enabledRef.current()) return;
     if (isEdgeBlocked(dir, pageRef.current, pageCountRef.current)) return;
     const from = pageRef.current;

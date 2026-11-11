@@ -36,13 +36,14 @@ import { useReaderChromeKeys } from '@/hooks/useReaderChromeKeys';
 import { useReaderPageText } from '@/hooks/useReaderPageText';
 import type { ReadablePdf } from '@/lib/rsvp/pageText';
 import { focusReaderFullscreenRoot, guardReaderFullscreenClick } from '@/lib/readerFullscreen';
+import { desktopFullscreenScale, readFullscreenScreen } from '@/lib/readerFullscreenScale';
 import { turnDirectionFromKey } from '@/lib/pageTurnGesture';
+import { useReaderInteractionResume } from '@/hooks/useReaderInteractionResume';
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const MOBILE_LAYOUT_QUERY = '(max-width: 1023px)';
 const MOBILE_DEFAULT_SCALE = 1.1;
 const DESKTOP_DEFAULT_SCALE = 0.8;
-const DESKTOP_FULLSCREEN_SCALE = 0.3;
 
 function isMobileLayout() {
   return typeof window !== 'undefined' && window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
@@ -299,6 +300,22 @@ function PDFViewerComponent({
       setTextSelected(false);
     };
   }, [isOpen]);
+
+  useReaderInteractionResume(
+    isOpen,
+    () => {
+      isPinchingRef.current = false;
+      touchStartRef.current = null;
+    },
+    () => {
+      isPinchingRef.current = false;
+      touchStartRef.current = null;
+      const selected = hasActiveTextSelection(containerRef.current);
+      isTextSelectedRef.current = selected;
+      containerRef.current?.classList.toggle('pdf-viewer-selecting', selected);
+      setTextSelected(selected);
+    },
+  );
 
   useEffect(() => {
     const mq = typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)') : null;
@@ -892,7 +909,7 @@ function PDFViewerComponent({
     if (isFullscreen && !scaleTouchedRef.current) {
       autoFullscreenScaleRef.current = true;
       resetFingerZoom();
-      setScale(DESKTOP_FULLSCREEN_SCALE);
+      setScale(desktopFullscreenScale(readFullscreenScreen()));
       return;
     }
     if (!isFullscreen && autoFullscreenScaleRef.current && !scaleTouchedRef.current) {

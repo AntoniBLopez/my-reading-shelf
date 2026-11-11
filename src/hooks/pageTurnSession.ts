@@ -161,6 +161,23 @@ export class PageTurnSession {
     this.armSettle(target, gen);
   }
 
+  /**
+   * The document was hidden, frozen, or the pointer went away.
+   * Animation frames and timers may never resume, which left the leaf unable to turn.
+   * A committed page lands. A drag that was still following the finger is cancelled.
+   */
+  recover(): void {
+    this.host.cancelFollow();
+    this.host.disarmTouch();
+    const gesture = this.host.gestureRef.current;
+    if (gesture) this.host.gestureRef.current = null;
+    if (this.pendingTarget != null) {
+      this.finishSettle(this.turnGen);
+      return;
+    }
+    if (this.curl || this.launching || this.lock || gesture) this.resetSheet();
+  }
+
   /** Drop a curl that is still playing so the next turn can start. */
   cutCurl() {
     if (this.curl || this.launching) this.rush = true;

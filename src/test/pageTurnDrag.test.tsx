@@ -76,7 +76,7 @@ function Stage({
 function pointer(
   type: 'pointerdown' | 'pointermove' | 'pointerup',
   node: EventTarget,
-  values: { clientX: number; clientY: number; pointerId?: number }
+  values: { clientX: number; clientY: number; pointerId?: number; pointerType?: string }
 ) {
   const event = new MouseEvent(type, {
     bubbles: true,
@@ -86,7 +86,7 @@ function pointer(
     button: 0,
   });
   Object.defineProperty(event, 'pointerId', { value: values.pointerId ?? 1 });
-  Object.defineProperty(event, 'pointerType', { value: 'touch' });
+  Object.defineProperty(event, 'pointerType', { value: values.pointerType ?? 'touch' });
   act(() => {
     node.dispatchEvent(event);
   });
@@ -255,6 +255,56 @@ describe('page turn drag', () => {
     stageRef.current?.turn('prev');
     await waitFor(() => expect(onCommit).toHaveBeenCalledWith(1));
     await waitFor(() => expect(leaf().textContent).toBe('1'));
+  });
+
+  it('GIVEN a desktop pointer WHEN the mouse is dragged THEN the page stays until a control turns it', async () => {
+    const onCommit = vi.fn();
+    const stageRef = createRef<PDFPageStageHandle>();
+    render(<Reader initialPage={2} onCommit={onCommit} stageRef={stageRef} />);
+    const scene = document.querySelector('.pdf-turn-scene');
+    if (!scene) throw new Error('missing scene');
+
+    pointer('pointerdown', scene, { clientX: 220, clientY: 80, pointerType: 'mouse' });
+    pointer('pointermove', window, { clientX: 40, clientY: 84, pointerType: 'mouse' });
+    flushFrames();
+    pointer('pointerup', window, { clientX: 40, clientY: 84, pointerType: 'mouse' });
+
+    expect(scene.hasAttribute('data-turn')).toBe(false);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(leaf().textContent).toBe('2');
+
+    act(() => {
+      stageRef.current?.turn('next');
+    });
+    await waitFor(() => expect(onCommit).toHaveBeenCalledWith(3));
+    await waitFor(() => expect(leaf().textContent).toBe('3'));
+  });
+
+  it('GIVEN a touch tablet WHEN the mouse is dragged THEN the page still follows the finger', async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('coarse') || query.includes('hover: none'),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    const onCommit = vi.fn();
+    render(<Reader initialPage={2} onCommit={onCommit} />);
+    const scene = document.querySelector('.pdf-turn-scene');
+    if (!scene) throw new Error('missing scene');
+
+    pointer('pointerdown', scene, { clientX: 220, clientY: 80, pointerType: 'mouse' });
+    pointer('pointermove', window, { clientX: 40, clientY: 84, pointerType: 'mouse' });
+    flushFrames();
+    expect(scene.getAttribute('data-turn')).toBe('next');
+    pointer('pointerup', window, { clientX: 40, clientY: 84, pointerType: 'mouse' });
+    window.matchMedia = original;
+
+    await waitFor(() => expect(onCommit).toHaveBeenCalledWith(3));
   });
 
   it('GIVEN turning is blocked WHEN the user swipes THEN the page stays', async () => {

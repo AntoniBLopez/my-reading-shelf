@@ -217,7 +217,21 @@ function cases(title: string) {
 
 test.describe('desktop page identity', () => {
   test.use({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 2 });
-  cases('on desktop');
+
+  test('GIVEN a desktop page WHEN the pointer is dragged THEN the page stays until an arrow key', async ({ page }) => {
+    await openBook(page, 1);
+    const canvas = page.locator('.pdf-turn-leaf canvas');
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('missing page');
+    await page.mouse.move(box.x + box.width - 24, box.y + box.height * 0.6);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.5, { steps: 16 });
+    await page.mouse.up();
+    await expect(page.locator('.pdf-page-curl--ready')).toHaveCount(0);
+    await expect(page.locator('.pdf-turn-leaf')).toContainText('ALPHA');
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.pdf-turn-leaf')).toContainText('BRAVO', { timeout: 8_000 });
+  });
 });
 
 test.describe('phone page identity', () => {
