@@ -195,7 +195,12 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
   };
 
   return (
-    <div className="pdf-viewer-pdf-wrapper" data-show-border={props.showBookBorder} data-theme={themeKey}>
+    <div
+      className="pdf-viewer-pdf-wrapper w-fit"
+      data-reader-page=""
+      data-show-border={props.showBookBorder}
+      data-theme={themeKey}
+    >
       <Document
         file={file}
         options={pdfDocOptions}

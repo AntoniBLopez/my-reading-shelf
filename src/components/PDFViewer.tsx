@@ -37,8 +37,9 @@ import { useReaderPageText } from '@/hooks/useReaderPageText';
 import type { ReadablePdf } from '@/lib/rsvp/pageText';
 import { focusReaderFullscreenRoot, guardReaderFullscreenClick } from '@/lib/readerFullscreen';
 import { desktopFullscreenScale, readFullscreenScreen } from '@/lib/readerFullscreenScale';
-import { turnDirectionFromKey } from '@/lib/pageTurnGesture';
+import { useReaderArrowKeys } from '@/hooks/useReaderArrowKeys';
 import { useReaderInteractionResume } from '@/hooks/useReaderInteractionResume';
+import { useReaderMarginTurn } from '@/hooks/useReaderMarginTurn';
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
 const MOBILE_LAYOUT_QUERY = '(max-width: 1023px)';
@@ -53,12 +54,6 @@ function defaultPageScale() {
   return isMobileLayout() ? MOBILE_DEFAULT_SCALE : DESKTOP_DEFAULT_SCALE;
 }
 const PDF_LOAD_TIMEOUT_MS = 10000;
-/** Double-tap (Pointer Events): ventana en ms y umbral de movimiento en px para considerar mismo punto */
-const DOUBLE_TAP_DELAY_MS = 450;
-const TAP_MOVEMENT_THRESHOLD_PX = 12;
-/** Double-tap/double-click: fracción del ancho para zona izquierda (anterior) y derecha (siguiente); centro = barra */
-const DOUBLE_TAP_LEFT_ZONE = 0.4;
-const DOUBLE_TAP_RIGHT_ZONE = 0.6;
 /** Snap page width to this grid so layout jitter at default zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
 /** Ignore ResizeObserver updates smaller than this (e.g. scrollbar on theme change) so PDFContentBlock doesn't re-render and Document doesn't reset */
@@ -141,6 +136,11 @@ function PDFViewerComponent({
   const [pdfLoadedOffline, setPdfLoadedOffline] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollNode, setScrollNode] = useState<HTMLDivElement | null>(null);
+  const assignScroll = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    setScrollNode(node);
+  }, []);
   const pinchContentRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{
@@ -154,9 +154,6 @@ function PDFViewerComponent({
     focalY: number;
     touchedAt?: number;
   } | null>(null);
-  /** Double-tap (solo touch vía Pointer Events): último toque para detectar segundo tap */
-  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
-  const doubleTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullscreenHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAtBaseZoomRef = useRef(true);
   const fingerZoomRef = useRef(1);
@@ -499,6 +496,7 @@ function PDFViewerComponent({
     setPageNumber(newPage);
   }, [numPages]);
 
+  /** Header arrows, the keyboard, and the margin double-click share this turn. */
   const requestTurn = useCallback((direction: 'next' | 'prev') => {
     stageRef.current?.turn(direction);
   }, []);
@@ -708,92 +706,25 @@ function PDFViewerComponent({
     toggleFullscreenHeader();
   }, [isFullscreen, toggleFullscreenHeader]);
   useReaderChromeKeys(isOpen && !rsvpOpen, toggleCenterHeader);
+  useReaderArrowKeys(isOpen, () => rsvpOpenRef.current, requestTurn);
+  useReaderMarginTurn({
+    viewport: scrollNode,
+    active: isOpen,
+    desktop: !isMobileOrTablet,
+    canTurn: getCanTurn,
+    textSelected: () => isTextSelectedRef.current,
+    turn: requestTurn,
+    onCenter: toggleCenterHeader,
+  });
 
-  /** Doble toque/clic: izquierda = página anterior, derecha = siguiente, centro (solo fullscreen) = toggle barra */
-  const handleDoubleTapOrClick = useCallback(
-    (clientX: number, containerEl: HTMLDivElement | null) => {
-      if (!containerEl || !getCanTurn()) return;
-      const rect = containerEl.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const w = rect.width;
-      if (w <= 0) return;
-      const rel = x / w;
-      if (rel < DOUBLE_TAP_LEFT_ZONE) {
-        requestTurn('prev');
-      } else if (rel > DOUBLE_TAP_RIGHT_ZONE) {
-        requestTurn('next');
-      } else {
-        toggleCenterHeader();
-      }
-    },
-    [getCanTurn, requestTurn, toggleCenterHeader]
-  );
-
-  /**
-   * Double-tap vía Pointer Events (solo touch): evita eventos sintéticos y doble disparo.
-   * Zona izquierda = página anterior, derecha = siguiente, centro (solo fullscreen) = toggle barra.
-   */
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType !== 'touch') return;
-      if (isTextSelectedRef.current) return;
-
-      const now = Date.now();
-      const { clientX: x, clientY: y } = e;
-      const containerEl = e.currentTarget;
-
-      if (lastTapRef.current) {
-        const { time, x: prevX, y: prevY } = lastTapRef.current;
-        const timeSince = now - time;
-        const dx = Math.abs(x - prevX);
-        const dy = Math.abs(y - prevY);
-
-        if (
-          timeSince < DOUBLE_TAP_DELAY_MS &&
-          dx < TAP_MOVEMENT_THRESHOLD_PX &&
-          dy < TAP_MOVEMENT_THRESHOLD_PX
-        ) {
-          handleDoubleTapOrClick(x, containerEl);
-          lastTapRef.current = null;
-          if (doubleTapTimeoutRef.current) {
-            clearTimeout(doubleTapTimeoutRef.current);
-            doubleTapTimeoutRef.current = null;
-          }
-          e.preventDefault();
-          return;
-        }
-      }
-
-      lastTapRef.current = { time: now, x, y };
-      if (doubleTapTimeoutRef.current) clearTimeout(doubleTapTimeoutRef.current);
-      doubleTapTimeoutRef.current = setTimeout(() => {
-        lastTapRef.current = null;
-        doubleTapTimeoutRef.current = null;
-      }, DOUBLE_TAP_DELAY_MS);
-    },
-    [handleDoubleTapOrClick]
-  );
-
-  const handleDoubleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (isMobileOrTablet) return;
-      handleDoubleTapOrClick(e.clientX, e.currentTarget);
-    },
-    [handleDoubleTapOrClick, isMobileOrTablet]
-  );
-
-  // Navegación con flechas y zoom con + / - del teclado
+  // Zoom with + / -. Arrows go through useReaderArrowKeys so they share requestTurn.
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (rsvpOpenRef.current) return;
       const target = e.target as HTMLElement;
       if (target.closest('input') || target.closest('textarea') || target.isContentEditable) return;
-      const direction = turnDirectionFromKey(e.key);
-      if (direction) {
-        e.preventDefault();
-        requestTurn(direction);
-      } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+      if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
         e.preventDefault();
         setScaleClamped(s => s + 0.1);
       } else if (e.key === '-' || e.code === 'NumpadSubtract') {
@@ -803,7 +734,7 @@ function PDFViewerComponent({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, requestTurn, setScaleClamped]);
+  }, [isOpen, setScaleClamped]);
 
   // Non-passive touchmove only during a pinch or a zoomed pan. A permanent listener
   // blocks iOS from dragging a text selection.
@@ -836,16 +767,6 @@ function PDFViewerComponent({
       el.removeEventListener('touchmove', onMove);
     };
   }, [isOpen, pdfUrl]);
-
-  // Limpieza del timeout de double-tap al cerrar
-  useEffect(() => {
-    return () => {
-      if (doubleTapTimeoutRef.current) {
-        clearTimeout(doubleTapTimeoutRef.current);
-        doubleTapTimeoutRef.current = null;
-      }
-    };
-  }, []);
 
   const handleClose = useCallback(() => {
     // Save final progress before closing
@@ -1103,9 +1024,10 @@ function PDFViewerComponent({
 
           {/* PDF Content: scroll container for pan when zoomed; swipe page only at toolbar default zoom */}
           <div
-            ref={scrollRef}
+            ref={assignScroll}
+            data-reader-viewport=""
             className={cn(
-              'relative flex-1 min-w-0 min-h-0 overflow-auto bg-white dark:bg-black overscroll-contain pdf-viewer-scroll',
+              'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-auto bg-white dark:bg-black overscroll-contain pdf-viewer-scroll',
               !isAtBaseZoom && 'pdf-viewer-scroll--zoomed'
             )}
           >
@@ -1113,11 +1035,9 @@ function PDFViewerComponent({
               ref={containerRef}
               data-reader-surface=""
               className={cn(
-                'pdf-reader-surface relative min-h-full min-w-full shrink-0 flex items-center justify-center p-4 bg-white dark:bg-black',
+                'pdf-reader-surface relative flex min-h-full w-full flex-1 shrink-0 items-center justify-center p-4 bg-white dark:bg-black',
                 textSelected ? 'pdf-viewer-selecting' : !isAtBaseZoom && 'touch-none'
               )}
-              onPointerDown={handlePointerDown}
-              onDoubleClick={handleDoubleClick}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
