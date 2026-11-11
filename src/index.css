@@ -273,9 +273,21 @@
   will-change: transform;
 }
 
-/* Margin around the page is part of the curl gesture. Vertical pans still scroll. */
+/* Margin around the page is part of the curl gesture. Vertical pans still scroll.
+   The gutter itself is not a text selection surface; the page text layer still is. */
 .pdf-reader-surface:not(.pdf-viewer-selecting):not(.touch-none) {
   touch-action: pan-y;
+}
+
+.pdf-reader-surface {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pdf-reader-surface .textLayer,
+.pdf-reader-surface .react-pdf__Page__textContent {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .pdf-turn-scene {

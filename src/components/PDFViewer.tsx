@@ -707,12 +707,18 @@ function PDFViewerComponent({
   }, [isFullscreen, toggleFullscreenHeader]);
   useReaderChromeKeys(isOpen && !rsvpOpen, toggleCenterHeader);
   useReaderArrowKeys(isOpen, () => rsvpOpenRef.current, requestTurn);
+  const releaseSelection = useCallback(() => {
+    isTextSelectedRef.current = false;
+    containerRef.current?.classList.remove('pdf-viewer-selecting');
+    setTextSelected(false);
+  }, []);
   useReaderMarginTurn({
     viewport: scrollNode,
     active: isOpen,
     desktop: !isMobileOrTablet,
     canTurn: getCanTurn,
     textSelected: () => isTextSelectedRef.current,
+    releaseSelection,
     turn: requestTurn,
     onCenter: toggleCenterHeader,
   });

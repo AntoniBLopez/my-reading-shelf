@@ -57,6 +57,36 @@ export function marginTurnAction(
   return rel < 0.5 ? 'prev' : 'next';
 }
 
-export function marginTurnBlocked(target: EventTarget | null, textSelected: boolean): boolean {
-  return textSelected || isTurnBlockedTarget(target);
+export function marginTurnBlocked(target: EventTarget | null, textSelected: boolean, margin = false): boolean {
+  if (isTurnBlockedTarget(target)) return true;
+  // A gutter double-click must turn even if the browser just selected a nearby word.
+  if (margin) return false;
+  return textSelected;
+}
+
+/** Empty reader space: not the page, and not a control. */
+export function isReaderMarginTarget(target: EventTarget | null, viewport: HTMLElement | null): boolean {
+  if (!viewport || !(target instanceof Node) || !viewport.contains(target)) return false;
+  if (isTurnBlockedTarget(target)) return false;
+  return readerPageBox(target) == null;
+}
+
+/** The second press of a double-click. That press is what selects a word. */
+export function marginPressSelectsWord(detail: number, button: number): boolean {
+  return button === 0 && detail >= 2;
+}
+
+export function readSelectionText(): string {
+  const selection = typeof window === 'undefined' ? null : window.getSelection();
+  if (!selection || selection.isCollapsed) return '';
+  return selection.toString();
+}
+
+/** The browser selected something new while the pointer was in the gutter. */
+export function selectionCameFromMarginClick(before: string, after: string): boolean {
+  return after !== '' && after !== before;
+}
+
+export function clearTextSelection(): void {
+  window.getSelection()?.removeAllRanges();
 }

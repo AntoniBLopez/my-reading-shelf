@@ -86,6 +86,10 @@ async function openBook(page: Page) {
   await expect(page.locator('canvas[data-page="1"]')).toBeVisible({ timeout: 30_000 });
 }
 
+async function selectedText(page: Page) {
+  return page.evaluate(() => window.getSelection()?.toString() ?? '');
+}
+
 async function gutterPoint(page: Page, side: 'left' | 'right') {
   const viewport = await page.locator('[data-reader-viewport]').boundingBox();
   const book = await page.locator('[data-reader-page]').boundingBox();
@@ -108,27 +112,41 @@ test('GIVEN an open book WHEN the empty gutter is double clicked THEN the page t
   const right = await gutterPoint(page, 'right');
   await page.mouse.dblclick(right.x, right.y);
   await expect(pageField).toHaveValue('2');
+  expect(await selectedText(page)).toBe('');
   await page.waitForTimeout(500);
   await expect(pageField).toHaveValue('2');
 
   const left = await gutterPoint(page, 'left');
   await page.mouse.dblclick(left.x, left.y);
   await expect(pageField).toHaveValue('1');
+  expect(await selectedText(page)).toBe('');
 
   await page.getByTitle('Mostrar borde del libro').click();
   const rightWithBorder = await gutterPoint(page, 'right');
   await page.mouse.dblclick(rightWithBorder.x, rightWithBorder.y);
   await expect(pageField).toHaveValue('2');
+  expect(await selectedText(page)).toBe('');
 
   const topLeft = await gutterPoint(page, 'left');
   const viewport = await page.locator('[data-reader-viewport]').boundingBox();
   if (!viewport) throw new Error('missing viewport');
   await page.mouse.dblclick(topLeft.x, viewport.y + viewport.height - 8);
   await expect(pageField).toHaveValue('1');
+  expect(await selectedText(page)).toBe('');
 
   await page.getByTitle('Ocultar borde del libro').dblclick();
   await expect(pageField).toHaveValue('1');
 
   await page.keyboard.press('ArrowRight');
   await expect(pageField).toHaveValue('2');
+
+  const word = page.locator('.textLayer span').first();
+  await expect(word).toBeVisible();
+  const wordBox = await word.boundingBox();
+  if (!wordBox) throw new Error('missing page text');
+  await page.mouse.move(wordBox.x + 1, wordBox.y + wordBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(wordBox.x + wordBox.width - 1, wordBox.y + wordBox.height / 2);
+  await page.mouse.up();
+  expect(await selectedText(page)).not.toBe('');
 });
