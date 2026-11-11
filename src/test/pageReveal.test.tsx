@@ -77,7 +77,7 @@ function media(matches: boolean) {
 function pointer(type: 'pointerdown' | 'pointermove' | 'pointerup', node: EventTarget, clientX: number, clientY: number) {
   const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY, button: 0 });
   Object.defineProperty(event, 'pointerId', { value: 1 });
-  Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+  Object.defineProperty(event, 'pointerType', { value: 'touch' });
   act(() => {
     node.dispatchEvent(event);
   });

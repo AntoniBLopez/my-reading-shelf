@@ -172,11 +172,11 @@ describe('page turn from the reader margin', () => {
   it('GIVEN a press past the left edge WHEN the drag is horizontal THEN the previous page stays', async () => {
     const onCommit = vi.fn();
     render(<Reader initialPage={3} onCommit={onCommit} />);
-    pointer('pointerdown', surface(), { clientX: 8, clientY: 140, pointerType: 'mouse' });
-    pointer('pointermove', window, { clientX: 220, clientY: 150, pointerType: 'mouse' });
+    pointer('pointerdown', surface(), { clientX: 8, clientY: 140 });
+    pointer('pointermove', window, { clientX: 220, clientY: 150 });
     flushFrames();
     expect(surface().querySelector('.pdf-turn-scene')?.getAttribute('data-turn')).toBe('prev');
-    pointer('pointerup', window, { clientX: 220, clientY: 150, pointerType: 'mouse' });
+    pointer('pointerup', window, { clientX: 220, clientY: 150 });
     await waitFor(() => expect(onCommit).toHaveBeenCalledWith(2));
     await waitFor(() => expect(leaf().textContent).toBe('2'));
   });

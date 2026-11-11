@@ -157,9 +157,28 @@ test('GIVEN an open book WHEN RSVP and a page drag run THEN playback stays pause
   if (!box) throw new Error('missing page box');
   const startX = box.x + box.width - 24;
   const startY = box.y + box.height * 0.72;
-  await page.mouse.move(startX, startY);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.42, box.y + box.height * 0.5, { steps: 12 });
+  const endX = box.x + box.width * 0.42;
+  const endY = box.y + box.height * 0.5;
+  await page.evaluate(({ startX: x, startY: y, endX: nextX, endY: nextY }) => {
+    const target = document.elementFromPoint(x, y) ?? document.body;
+    const fire = (type: string, clientX: number, clientY: number) => {
+      const event = new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: 'touch',
+        clientX,
+        clientY,
+        button: 0,
+        buttons: 1,
+        isPrimary: true,
+      });
+      if (type === 'pointerdown') target.dispatchEvent(event);
+      else window.dispatchEvent(event);
+    };
+    fire('pointerdown', x, y);
+    fire('pointermove', nextX, nextY);
+  }, { startX, startY, endX, endY });
   const curl = page.locator('.pdf-page-curl--ready canvas');
   await expect(curl).toBeVisible({ timeout: 8_000 });
   await page.waitForTimeout(150);
@@ -191,7 +210,19 @@ test('GIVEN an open book WHEN RSVP and a page drag run THEN playback stays pause
   expect(spread).toBeGreaterThan(12);
   await expect(page.locator('.pdf-turn-leaf')).not.toHaveAttribute('style', /rotateY/);
   await page.screenshot({ path: `${ARTIFACTS}/page-curl-mid-drag.png` });
-  await page.mouse.up();
+  await page.evaluate(({ endX: x, endY: y }) => {
+    window.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons: 0,
+      isPrimary: true,
+    }));
+  }, { endX, endY });
 });
 
 test('GIVEN the reader in fullscreen WHEN tapping the rayo THEN RSVP stays inside the fullscreen element', async ({ page }) => {

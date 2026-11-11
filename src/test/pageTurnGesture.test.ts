@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allowsPageDrag,
   COMMIT_PROGRESS,
   COMMIT_VELOCITY,
   clampPointerToBox,
@@ -84,6 +85,15 @@ describe('page turn gesture', () => {
     expect(releaseOffsetPx(300, 'next', true)).toBe(-300);
     expect(releaseOffsetPx(300, 'prev', true)).toBe(300);
     expect(releaseOffsetPx(300, 'next', false)).toBe(0);
+  });
+
+  it('should follow a finger on any device and a mouse only when touch is primary', () => {
+    expect(allowsPageDrag('touch', false)).toBe(true);
+    expect(allowsPageDrag('pen', false)).toBe(true);
+    expect(allowsPageDrag('touch', true)).toBe(true);
+    expect(allowsPageDrag('mouse', false)).toBe(false);
+    expect(allowsPageDrag('mouse', true)).toBe(true);
+    expect(allowsPageDrag('pen', true)).toBe(true);
   });
 
   it('should map arrow keys to a page turn in normal and fullscreen readers', () => {

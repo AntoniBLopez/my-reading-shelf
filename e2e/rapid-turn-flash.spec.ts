@@ -230,8 +230,8 @@ async function slowArrow(page: Page, origin: string, destination: string) {
   await expect(page.locator('.pdf-turn-leaf')).not.toContainText(WORDS[Number(origin) - 1]);
 }
 
-function cases(title: string, shot: string) {
-  test(`GIVEN a burst of turns WHEN a slow drag and arrow follow THEN the previous page never returns ${title}`, async ({ page }) => {
+function cases(title: string, shot: string, drag: boolean) {
+  test(`GIVEN a burst of turns WHEN the next page is turned slowly THEN the previous page never returns ${title}`, async ({ page }) => {
     await openBook(page);
     await burst(page);
     const stable = await settledLeaf(page);
@@ -242,15 +242,20 @@ function cases(title: string, shot: string) {
     });
     const origin = String(stable + 1);
     const destination = String(stable + 2);
-    await slowDrag(page, origin, destination, shot);
-    await page.screenshot({ path: `${ARTIFACTS}/${shot}-settled.png` });
+    if (drag) {
+      await slowDrag(page, origin, destination, shot);
+      await page.screenshot({ path: `${ARTIFACTS}/${shot}-settled.png` });
+      await slowArrow(page, destination, String(stable + 3));
+      return;
+    }
+    await slowArrow(page, origin, destination);
     await slowArrow(page, destination, String(stable + 3));
   });
 }
 
 test.describe('desktop rapid turn flash', () => {
   test.use({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 2 });
-  cases('on desktop', 'rapid-turn-desktop');
+  cases('on desktop', 'rapid-turn-desktop', false);
 });
 
 test.describe('phone rapid turn flash', () => {
@@ -260,5 +265,5 @@ test.describe('phone rapid turn flash', () => {
     hasTouch: true,
     isMobile: true,
   });
-  cases('on a phone', 'rapid-turn-phone');
+  cases('on a phone', 'rapid-turn-phone', true);
 });

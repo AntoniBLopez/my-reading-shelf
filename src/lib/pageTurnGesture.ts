@@ -87,6 +87,29 @@ export function targetPage(page: number, dir: TurnDirection): number {
   return dir === 'next' ? page + 1 : page - 1;
 }
 
+const TOUCH_PRIMARY_QUERY = '(pointer: coarse), (hover: none)';
+
+/** Phones and tablets. A mouse on that device must not be treated as a desktop trackpad. */
+export function isTouchPrimaryInput(
+  matches: (query: string) => boolean = (query) => window.matchMedia(query).matches,
+): boolean {
+  try {
+    return matches(TOUCH_PRIMARY_QUERY);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The curl follows a finger or a stylus.
+ * A mouse or trackpad on a fine desktop pointer does not turn the page.
+ * On a touch-primary device the same mouse events still do, so a tablet keeps the gesture.
+ */
+export function allowsPageDrag(pointerType: string, touchPrimary: boolean): boolean {
+  if (pointerType === 'touch' || pointerType === 'pen') return true;
+  return pointerType === 'mouse' && touchPrimary;
+}
+
 /** Header arrows and the keyboard. Same mapping in the window and in fullscreen. */
 export function turnDirectionFromKey(key: string): TurnDirection | null {
   if (key === 'ArrowLeft' || key === 'ArrowDown') return 'prev';
