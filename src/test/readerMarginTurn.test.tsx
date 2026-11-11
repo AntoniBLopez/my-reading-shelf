@@ -2,7 +2,15 @@ import { useState } from 'react';
 import { act, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useReaderMarginTurn } from '@/hooks/useReaderMarginTurn';
-import { marginTurnAction, marginTurnBlocked, readerPageBox, type ReaderBox } from '@/lib/readerMarginTurn';
+import {
+  isReaderMarginTarget,
+  marginPressSelectsWord,
+  marginTurnAction,
+  marginTurnBlocked,
+  readerPageBox,
+  selectionCameFromMarginClick,
+  type ReaderBox,
+} from '@/lib/readerMarginTurn';
 
 const viewport: ReaderBox = { left: 0, top: 0, width: 1000, height: 800 };
 const page: ReaderBox = { left: 400, top: 200, width: 200, height: 300 };
@@ -67,6 +75,21 @@ describe('margin turn geometry', () => {
     expect(readerPageBox(frame)).toBeNull();
     book.setAttribute('data-show-border', 'false');
     expect(readerPageBox(book)).toMatchObject(page);
+    document.body.append(frame);
+    expect(isReaderMarginTarget(frame, frame)).toBe(true);
+    expect(isReaderMarginTarget(book, frame)).toBe(false);
+    frame.remove();
+  });
+
+  it('should tell a gutter word-hit from a selection the reader already had', () => {
+    expect(marginPressSelectsWord(2, 0)).toBe(true);
+    expect(marginPressSelectsWord(1, 0)).toBe(false);
+    expect(marginPressSelectsWord(2, 2)).toBe(false);
+    expect(selectionCameFromMarginClick('', 'Inicio')).toBe(true);
+    expect(selectionCameFromMarginClick('Inicio', 'Inicio')).toBe(false);
+    expect(selectionCameFromMarginClick('Inicio', '')).toBe(false);
+    expect(marginTurnBlocked(document.createElement('div'), true, true)).toBe(false);
+    expect(marginTurnBlocked(document.createElement('div'), true, false)).toBe(true);
   });
 });
 
@@ -77,6 +100,7 @@ function Reader({
   textSelected = () => false,
   onTurn,
   onCenter,
+  onRelease = () => {},
 }: {
   showBorder: boolean;
   desktop?: boolean;
@@ -84,6 +108,7 @@ function Reader({
   textSelected?: () => boolean;
   onTurn: (direction: 'next' | 'prev') => void;
   onCenter: () => void;
+  onRelease?: () => void;
 }) {
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   useReaderMarginTurn({
@@ -92,6 +117,7 @@ function Reader({
     desktop,
     canTurn,
     textSelected,
+    releaseSelection: onRelease,
     turn: onTurn,
     onCenter,
   });
@@ -125,10 +151,11 @@ function rect(box: ReaderBox): DOMRect {
   } as DOMRect;
 }
 
-function mount(showBorder: boolean, options?: {
+function mount(showBorder: boolean,   options?: {
   desktop?: boolean;
   canTurn?: () => boolean;
   textSelected?: () => boolean;
+  onRelease?: () => void;
 }) {
   const onTurn = vi.fn();
   const onCenter = vi.fn();
@@ -191,18 +218,67 @@ describe('reader margin double click', () => {
     expect(onCenter).not.toHaveBeenCalled();
   });
 
-  it('GIVEN a mouse drag or a text selection WHEN it happens in the gutter THEN the page stays', () => {
-    const selected = mount(false, { textSelected: () => true });
-    dblclick(selected.viewportNode, 30, 400);
-    pointerDown(selected.viewportNode, 800, 400, 'mouse');
-    pointerDown(selected.viewportNode, 100, 400, 'mouse');
-    expect(selected.onTurn).not.toHaveBeenCalled();
-    selected.unmount();
-
+  it('GIVEN a mouse drag WHEN it happens in the gutter THEN the page stays', () => {
     const dragging = mount(false);
     pointerDown(dragging.viewportNode, 800, 400, 'mouse');
     pointerDown(dragging.viewportNode, 40, 400, 'mouse');
     expect(dragging.onTurn).not.toHaveBeenCalled();
+  });
+
+  it('GIVEN the browser selects the nearest word WHEN the double click is outside the book THEN that page still turns', () => {
+    let selected = false;
+    const onRelease = vi.fn(() => { selected = false; });
+    const { onTurn, viewportNode, pageNode } = mount(true, {
+      textSelected: () => selected,
+      onRelease,
+    });
+    const word = document.createElement('span');
+    word.textContent = 'Inicio';
+    pageNode.append(word);
+    const down = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      detail: 2,
+      button: 0,
+      clientX: 24,
+      clientY: 30,
+    });
+    act(() => {
+      viewportNode.dispatchEvent(down);
+    });
+    expect(down.defaultPrevented).toBe(true);
+    const selectStart = new Event('selectstart', { bubbles: true, cancelable: true });
+    act(() => {
+      word.dispatchEvent(selectStart);
+    });
+    expect(selectStart.defaultPrevented).toBe(true);
+    const range = document.createRange();
+    range.selectNodeContents(word);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    selected = true;
+    dblclick(viewportNode, 24, 30);
+    expect(onTurn).toHaveBeenCalledTimes(1);
+    expect(onTurn).toHaveBeenCalledWith('prev');
+    expect(onRelease).toHaveBeenCalled();
+    expect(selection?.toString() ?? '').toBe('');
+
+    const pageDown = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      detail: 2,
+      button: 0,
+      clientX: 500,
+      clientY: 350,
+    });
+    act(() => {
+      pageNode.dispatchEvent(pageDown);
+    });
+    expect(pageDown.defaultPrevented).toBe(false);
+    selected = true;
+    dblclick(pageNode, 500, 350);
+    expect(onTurn).toHaveBeenCalledTimes(1);
   });
 
   it('GIVEN one double click WHEN the page can turn THEN it asks for exactly one step', () => {
@@ -243,6 +319,7 @@ describe('reader margin double click', () => {
         desktop: true,
         canTurn: () => true,
         textSelected: () => false,
+        releaseSelection: () => {},
         turn: onTurn,
         onCenter,
       });
@@ -256,9 +333,7 @@ describe('reader margin double click', () => {
     const view = render(<Delayed />);
     dblclick(view.getByRole('button', { name: 'Abrir' }), 20, 20);
     expect(onTurn).not.toHaveBeenCalled();
-    act(() => {
-      view.getByRole('button', { name: 'Abrir' }).click();
-    });
+    act(() => { view.getByRole('button', { name: 'Abrir' }).click(); });
     const viewportNode = view.getByTestId('viewport');
     viewportNode.getBoundingClientRect = () => rect(viewport);
     dblclick(viewportNode, 900, 40);

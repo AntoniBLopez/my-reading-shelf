@@ -1,9 +1,14 @@
 import { useEffect, useRef } from 'react';
 import type { TurnDirection } from '@/lib/pageTurnGesture';
 import {
+  clearTextSelection,
+  isReaderMarginTarget,
+  marginPressSelectsWord,
   marginTurnAction,
   marginTurnBlocked,
+  readSelectionText,
   readerPageBox,
+  selectionCameFromMarginClick,
   type ReaderBox,
 } from '@/lib/readerMarginTurn';
 
@@ -23,6 +28,8 @@ type UseReaderMarginTurnArgs = {
   desktop: boolean;
   canTurn: () => boolean;
   textSelected: () => boolean;
+  /** Drop the viewer's "text is selected" lock after a gutter double-click. */
+  releaseSelection: () => void;
   turn: PageTurn;
   onCenter: () => void;
 };
@@ -43,17 +50,20 @@ export function useReaderMarginTurn({
   desktop,
   canTurn,
   textSelected,
+  releaseSelection,
   turn,
   onCenter,
 }: UseReaderMarginTurnArgs): void {
   const desktopRef = useRef(desktop);
   const canTurnRef = useRef(canTurn);
   const textSelectedRef = useRef(textSelected);
+  const releaseSelectionRef = useRef(releaseSelection);
   const turnRef = useRef(turn);
   const onCenterRef = useRef(onCenter);
   desktopRef.current = desktop;
   canTurnRef.current = canTurn;
   textSelectedRef.current = textSelected;
+  releaseSelectionRef.current = releaseSelection;
   turnRef.current = turn;
   onCenterRef.current = onCenter;
 
@@ -64,24 +74,54 @@ export function useReaderMarginTurn({
     let lastTap: { time: number; x: number; y: number } | null = null;
     let tapTimer = 0;
     let touchTurnAt = 0;
+    let selectionBeforePress = '';
+    let blockMarginSelection = false;
+
+    const marginTarget = (target: EventTarget | null) =>
+      desktopRef.current && isReaderMarginTarget(target, node);
 
     const apply = (clientX: number, clientY: number, target: EventTarget | null) => {
+      const margin = marginTarget(target);
+      if (margin && selectionCameFromMarginClick(selectionBeforePress, readSelectionText())) {
+        clearTextSelection();
+      }
+      if (margin) releaseSelectionRef.current();
       const action = marginTurnAction(
         clientX,
         clientY,
         boxOf(node),
         readerPageBox(target),
-        marginTurnBlocked(target, textSelectedRef.current()),
+        marginTurnBlocked(target, textSelectedRef.current(), margin),
       );
       if (!action || !canTurnRef.current()) return;
       if (action === 'center') onCenterRef.current();
       else turnRef.current(action);
     };
 
+    const onMouseDown = (event: MouseEvent) => {
+      const margin = marginTarget(event.target);
+      blockMarginSelection = margin && marginPressSelectsWord(event.detail, event.button);
+      if (!blockMarginSelection) return;
+      selectionBeforePress = readSelectionText();
+      event.preventDefault();
+    };
+
+    const onSelectStart = (event: Event) => {
+      if (!blockMarginSelection) return;
+      event.preventDefault();
+    };
+
     const onDoubleClick = (event: MouseEvent) => {
       if (!desktopRef.current || event.button !== 0) return;
       if (Date.now() - touchTurnAt < TOUCH_CLICK_GUARD_MS) return;
       apply(event.clientX, event.clientY, event.target);
+      blockMarginSelection = false;
+    };
+
+    const onMouseUp = () => {
+      window.setTimeout(() => {
+        blockMarginSelection = false;
+      }, 0);
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -108,10 +148,16 @@ export function useReaderMarginTurn({
       }, DOUBLE_TAP_DELAY_MS);
     };
 
+    node.addEventListener('mousedown', onMouseDown, true);
+    node.addEventListener('mouseup', onMouseUp);
+    node.addEventListener('selectstart', onSelectStart, true);
     node.addEventListener('dblclick', onDoubleClick);
     node.addEventListener('pointerdown', onPointerDown);
     return () => {
       window.clearTimeout(tapTimer);
+      node.removeEventListener('mousedown', onMouseDown, true);
+      node.removeEventListener('mouseup', onMouseUp);
+      node.removeEventListener('selectstart', onSelectStart, true);
       node.removeEventListener('dblclick', onDoubleClick);
       node.removeEventListener('pointerdown', onPointerDown);
     };
