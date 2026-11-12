@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { Page } from 'react-pdf';
+import { rememberPageSheet } from '@/lib/pageSheetMemory';
 
 type TurnSlotProps = {
   pageNumber: number;
@@ -31,6 +32,7 @@ export function TurnSlot({
       const canvas = ref.current?.querySelector('canvas');
       if (canvas instanceof HTMLCanvasElement && !canvas.closest('.pdf-page-curl')) {
         canvas.dataset.page = String(page.pageNumber);
+        rememberPageSheet(canvas);
       }
       onReady(page.pageNumber);
     },
