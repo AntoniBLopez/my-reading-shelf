@@ -1,6 +1,8 @@
 import { PageFlip } from 'page-flip/dist/js/page-flip.module.js';
 import { adaptCurlCanvas, enableRetinaCurlCanvas, paintBlankBack, punchRevealedPage, type FoldingPage } from '@/components/curlOverlay';
-import { BLANK_REVEALED_PAGE, shouldSnapshotForCurl, snapshotCanvas } from '@/components/curlSheetBitmap';
+import { BLANK_REVEALED_PAGE, shouldSnapshotForCurl } from '@/components/curlSheetBitmap';
+import { bindCurlRuntime } from '@/lib/curlRuntime';
+import { openCurlSheet } from '@/lib/pageSheetMemory';
 
 export type CurlPoint = { x: number; y: number };
 
@@ -29,14 +31,14 @@ type CreatePageCurlArgs = {
 
 export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurlSession> {
   const mirror = args.direction === 'prev';
-  const currentUrl = shouldSnapshotForCurl('sheet')
-    ? await snapshotCanvas(args.current, args.invert, mirror)
-    : BLANK_REVEALED_PAGE;
+  const currentSheet = shouldSnapshotForCurl('sheet')
+    ? await openCurlSheet(args.current, args.invert, mirror)
+    : { url: BLANK_REVEALED_PAGE, owned: false };
   // The page underneath is the live PDF canvas. A snapshot here is what made the reveal soft.
-  const otherUrl = shouldSnapshotForCurl('revealed')
-    ? await snapshotCanvas(args.other, args.invert, mirror)
-    : BLANK_REVEALED_PAGE;
-  const snapshotUrls = [currentUrl, otherUrl];
+  const otherSheet = shouldSnapshotForCurl('revealed')
+    ? await openCurlSheet(args.other, args.invert, mirror)
+    : { url: BLANK_REVEALED_PAGE, owned: false };
+  const snapshotUrls = [currentSheet, otherSheet].filter((sheet) => sheet.owned).map((sheet) => sheet.url);
   if (args.isCancelled?.() || !args.scene.isConnected) {
     for (const url of snapshotUrls) {
       if (url.startsWith('blob:')) URL.revokeObjectURL(url);
@@ -54,7 +56,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
 
   // Prev is a forward curl of mirrored snapshots, then flipped back with CSS,
   // so the sheet peels from the left the same way next peels from the right.
-  const images = [currentUrl, otherUrl];
+  const images = [currentSheet.url, otherSheet.url];
   const successIndex = 1;
 
   const flip = new PageFlip(host, {
@@ -76,6 +78,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
     clickEventForward: false,
   });
 
+  let releaseRuntime = () => {};
   let armed = false;
   let settled = false;
   let removed = false;
@@ -108,6 +111,7 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
   const removeDom = () => {
     if (removed) return;
     removed = true;
+    releaseRuntime();
     try {
       flip.destroy();
     } catch {
@@ -215,7 +219,9 @@ export async function createPageCurl(args: CreatePageCurlArgs): Promise<PageCurl
     window.requestAnimationFrame(tick);
   };
   flip.on('init', reveal);
-  flip.loadFromImages(images);
+  releaseRuntime = bindCurlRuntime(() => {
+    flip.loadFromImages(images);
+  });
   const render = (flip as { getRender?: () => { drawBookShadow?: () => void } }).getRender?.();
   if (render) render.drawBookShadow = () => undefined;
   enableRetinaCurlCanvas(host, flip, args.width, args.height, args.invert);
