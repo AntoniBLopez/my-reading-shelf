@@ -5,8 +5,14 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { cn } from '@/lib/utils';
 import { useCoarsePointer } from '@/hooks/useCoarsePointer';
 import { usePageSwipe } from '@/hooks/usePageSwipe';
+import { ReaderPdfLinks } from '@/components/ReaderPdfLinks';
 import { TurnSlot } from '@/components/TurnSlot';
+import { useReaderExternalLinks } from '@/hooks/useReaderExternalLinks';
 import { pageDevicePixelRatio } from '@/lib/pageCanvasScale';
+import {
+  READER_EXTERNAL_LINK_REL,
+  READER_EXTERNAL_LINK_TARGET_ATTR,
+} from '@/lib/readerExternalLinks';
 import type { TurnDirection } from '@/lib/pageTurnGesture';
 import {
   beginTurn,
@@ -62,6 +68,8 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
 ) {
   const sceneRef = useRef<HTMLDivElement>(null);
   const leafRef = useRef<HTMLDivElement>(null);
+  const bookRef = useRef<HTMLDivElement>(null);
+  useReaderExternalLinks(bookRef);
   const genRef = useRef(0);
   const [slots, setSlots] = useState(() => slotsForPage(props.pageNumber));
   // The bitmap the reader sees. It stays on the page the curl sheet was drawn from
@@ -196,6 +204,7 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
 
   return (
     <div
+      ref={bookRef}
       className="pdf-viewer-pdf-wrapper w-fit"
       data-reader-page=""
       data-show-border={props.showBookBorder}
@@ -205,12 +214,15 @@ export const PDFPageStage = forwardRef<PDFPageStageHandle, PDFPageStageProps>(fu
         file={file}
         options={pdfDocOptions}
         suspense={false}
+        externalLinkTarget={READER_EXTERNAL_LINK_TARGET_ATTR}
+        externalLinkRel={READER_EXTERNAL_LINK_REL}
         onLoadSuccess={props.onDocumentLoadSuccess}
         onLoadError={props.onDocumentLoadError}
         onItemClick={props.onItemClick}
         loading={null}
         className={cn(props.showBookBorder && 'shadow-lg')}
       >
+        <ReaderPdfLinks />
         <div
           ref={sceneRef}
           className={cn('pdf-turn-scene', props.panFree && 'pdf-turn-scene--free')}

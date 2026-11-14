@@ -41,7 +41,8 @@ const TURN_BLOCKED_TARGET =
 
 /** Toolbar, arrows, menus, links, and fields keep their own gestures. */
 export function isTurnBlockedTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest(TURN_BLOCKED_TARGET) != null;
+  const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+  return !!element?.closest(TURN_BLOCKED_TARGET);
 }
 
 export function isEdgeBlocked(dir: TurnDirection, page: number, pageCount: number): boolean {
