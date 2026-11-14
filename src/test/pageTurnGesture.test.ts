@@ -127,7 +127,10 @@ describe('page turn gesture', () => {
     chrome.append(label);
     const page = document.createElement('div');
     host.append(link, field, menu, chrome, page);
+    const linkText = document.createTextNode('capítulo');
+    link.append(linkText);
     expect(isTurnBlockedTarget(link)).toBe(true);
+    expect(isTurnBlockedTarget(linkText)).toBe(true);
     expect(isTurnBlockedTarget(field)).toBe(true);
     expect(isTurnBlockedTarget(item)).toBe(true);
     expect(isTurnBlockedTarget(label)).toBe(true);
