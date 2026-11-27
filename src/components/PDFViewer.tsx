@@ -38,6 +38,10 @@ import type { ReadablePdf } from '@/lib/rsvp/pageText';
 import { focusReaderFullscreenRoot, guardReaderFullscreenClick } from '@/lib/readerFullscreen';
 import { desktopFullscreenScale, readFullscreenScreen } from '@/lib/readerFullscreenScale';
 import { useReaderArrowKeys } from '@/hooks/useReaderArrowKeys';
+import { useReaderWordMarks } from '@/hooks/useReaderWordMarks';
+import { MarkChrome } from '@/components/marks/MarkChrome';
+import { MarkToolbar } from '@/components/marks/MarkToolbar';
+import { isTypingTarget } from '@/lib/keyboard';
 import { useReaderInteractionResume } from '@/hooks/useReaderInteractionResume';
 import { useReaderMarginTurn } from '@/hooks/useReaderMarginTurn';
 const MIN_SCALE = 0.1;
@@ -173,6 +177,7 @@ function PDFViewerComponent({
   const pdfDocRef = useRef<ReadablePdf | null>(null);
   const [rsvpOpen, setRsvpOpen] = useState(false);
   const rsvpOpenRef = useRef(false);
+  const markPanelRef = useRef(false);
   rsvpOpenRef.current = rsvpOpen;
 
   const isAtBaseZoom = fingerZoom <= 1 + BASE_ZOOM_TOLERANCE;
@@ -707,6 +712,16 @@ function PDFViewerComponent({
   }, [isFullscreen, toggleFullscreenHeader]);
   useReaderChromeKeys(isOpen && !rsvpOpen, toggleCenterHeader);
   useReaderArrowKeys(isOpen, () => rsvpOpenRef.current, requestTurn);
+  const wordMarks = useReaderWordMarks({
+    bookId: book.id,
+    bookTitle: book.title,
+    pageNumber,
+    surfaceRef: containerRef,
+    active: isOpen,
+    shortcuts: isOpen && !rsvpOpen,
+    onGoToPage: goToPage,
+    panelRef: markPanelRef,
+  });
   const releaseSelection = useCallback(() => {
     isTextSelectedRef.current = false;
     containerRef.current?.classList.remove('pdf-viewer-selecting');
@@ -728,8 +743,7 @@ function PDFViewerComponent({
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (rsvpOpenRef.current) return;
-      const target = e.target as HTMLElement;
-      if (target.closest('input') || target.closest('textarea') || target.isContentEditable) return;
+      if (isTypingTarget(e.target)) return;
       if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
         e.preventDefault();
         setScaleClamped(s => s + 0.1);
@@ -871,7 +885,10 @@ function PDFViewerComponent({
         )}
         hideCloseButton
         onEscapeKeyDown={(event) => {
-          if (rsvpOpenRef.current) event.preventDefault();
+          if (rsvpOpenRef.current || markPanelRef.current) {
+            event.preventDefault();
+            if (markPanelRef.current) wordMarks.closePanel();
+          }
         }}
         onPointerDownOutside={(event) => guardReaderFullscreenClick(fullscreenRef.current, event)}
         onInteractOutside={(event) => guardReaderFullscreenClick(fullscreenRef.current, event)}
@@ -962,6 +979,7 @@ function PDFViewerComponent({
 
             {/* Fullscreen, theme, zoom — wraps on very narrow screens */}
             <div className="flex flex-wrap items-center gap-1 sm:gap-2 min-w-0 shrink-0 justify-end">
+              <MarkToolbar controls={wordMarks} />
               <RsvpLaunchButton
                 disabled={!pdfUrl || loading || !!error}
                 onClick={() => setRsvpOpen(true)}
@@ -1099,6 +1117,7 @@ function PDFViewerComponent({
               )}
             </div>
           </div>
+          <MarkChrome controls={wordMarks} />
         </div>
 
         {/* Footer with page info — hidden in fullscreen to maximize PDF area */}

@@ -1,0 +1,11 @@
+export const MAX_WORDS = 4;
+export const ANCHOR_CHARS = 80;
+export const MAX_SENTENCE = 600;
+export const FLASH_MS = 600;
+export const TOAST_MS = 3000;
+export const TOAST_UNDO_MS = 5000;
+export const LEARNED_ALPHA = 0.1;
+export const HOVER_ALPHA_BUMP = 0.08;
+export const DARK_LUMINANCE = 0.4;
+export const CACHE_PREFIX = 'reading-shelf-word-marks';
+export const OUTBOX_PREFIX = 'reading-shelf-word-marks-outbox';
