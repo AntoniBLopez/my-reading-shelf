@@ -26,6 +26,8 @@ describe('reader shell and review layout', () => {
     expect(panelFrameClass('dock')).toContain('min-[2200px]:w-[460px]');
     expect(panelFrameClass('dock')).not.toContain('absolute');
     expect(panelFrameClass('overlay')).toContain('absolute');
+    expect(panelFrameClass('sheet')).toContain('[outline:none]');
+    expect(panelFrameClass('sheet')).not.toContain('focus-visible:outline');
     expect(panelFrameClass('sheet')).toContain('bottom-0');
     expect(panelFrameClass('sheet')).toContain('h-[90dvh]');
     expect(panelFrameClass('sheet')).toContain('pb-[env(safe-area-inset-bottom)]');

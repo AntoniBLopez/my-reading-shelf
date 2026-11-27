@@ -14,7 +14,7 @@ export function sheetSwipeCloses(deltaY: number): boolean {
 }
 
 export function panelFrameClass(layout: PanelLayout): string {
-  const base = 'flex min-h-0 flex-col bg-[var(--mark-surface)] font-sans text-[var(--mark-text)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--mark-ink)]';
+  const base = 'flex min-h-0 flex-col bg-[var(--mark-surface)] font-sans text-[var(--mark-text)] [outline:none]';
   if (layout === 'dock') {
     return `${base} relative h-full w-[420px] min-[2200px]:w-[460px] shrink-0 border-l border-[var(--mark-line)]`;
   }
