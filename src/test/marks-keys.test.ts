@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isFullscreenKey, isToggleKey, isTypingTarget } from '@/lib/keyboard';
-import { isMarkWordKey, isReviewPanelKey } from '@/lib/marks/keys';
+import { isApplePlatform, isMarkWordKey, isReviewPanelKey, markTooltip, panelTooltip } from '@/lib/marks/keys';
 import { turnDirectionFromKey } from '@/lib/pageTurnGesture';
 
 describe('word mark shortcuts', () => {
@@ -28,5 +28,12 @@ describe('word mark shortcuts', () => {
     expect(isTypingTarget(card)).toBe(true);
     expect(isTypingTarget(document.body)).toBe(false);
     panel.remove();
+  });
+
+  it('should show Mac glyphs and keep Ctrl+Alt on other platforms', () => {
+    expect(isApplePlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)')).toBe(true);
+    expect(isApplePlatform('Mozilla/5.0 (Windows NT 10.0)')).toBe(false);
+    expect(markTooltip(true)).toBe('Marcar palabra (⌃⌥M)');
+    expect(panelTooltip(false)).toBe('Palabras marcadas (Ctrl+Alt+L)');
   });
 });

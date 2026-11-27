@@ -4,12 +4,10 @@ import { copy } from '@/lib/marks/copy';
 
 export function MarkToast({
   toast,
-  panelOpen,
   onUndo,
   onDismiss,
 }: {
   toast: ActiveToast | null;
-  panelOpen: boolean;
   onUndo: () => void;
   onDismiss: () => void;
 }) {
@@ -28,27 +26,24 @@ export function MarkToast({
   if (!toast) return null;
 
   return (
-    <div
-      data-mark-ui=""
-      className={`pointer-events-none absolute inset-x-0 z-50 flex justify-center px-4 sm:p-6 ${panelOpen ? 'bottom-24 pb-2 sm:justify-start' : 'bottom-0 pb-4 sm:justify-end'}`}
-    >
+    <div data-mark-ui="" className="pointer-events-none absolute inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4 sm:justify-end sm:p-6">
       <div
         role="status"
         aria-live="polite"
-        className="pointer-events-auto flex max-w-[360px] items-center gap-2.5 rounded-xl bg-[#14213D] px-4 py-3 text-[15px] font-medium text-[#FBF7F1] shadow-[0_8px_24px_rgba(16,38,63,0.25)] animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none"
+        className="pointer-events-auto flex max-w-sm items-start gap-2.5 rounded-xl bg-[var(--mark-toast)] px-4 py-3 text-[15px] font-medium leading-snug text-[var(--mark-toast-text)] shadow-[0_8px_24px_rgba(16,38,63,0.25)] animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none"
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
         onFocus={() => setPaused(true)}
         onBlur={() => setPaused(false)}
       >
         {toast.color && (
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: toast.color }} aria-hidden />
+          <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: toast.color }} aria-hidden />
         )}
-        <span className="min-w-0 truncate">{toast.text}</span>
+        <span className="min-w-0 flex-1 whitespace-normal">{toast.text}</span>
         {toast.undo && (
           <button
             type="button"
-            className="min-h-10 shrink-0 px-2 font-semibold text-[#F2B53A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F2B53A]"
+            className="min-h-10 shrink-0 px-2 font-semibold text-[var(--mark-undo)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mark-undo)]"
             onClick={onUndo}
           >
             {copy.undo}

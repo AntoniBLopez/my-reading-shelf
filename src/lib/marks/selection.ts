@@ -35,6 +35,13 @@ export function readPageSelection(surface: ParentNode | null, pageNumber: number
   return { ok: true, input, count: hits.length };
 }
 
+export function isFrontReader(surface: Element | null, root: ParentNode): boolean {
+  if (!surface) return false;
+  const readers = [...root.querySelectorAll('[data-reader-surface]')];
+  const front = readers[readers.length - 1];
+  return !front || front === surface;
+}
+
 export function clearNativeSelection(doc: Document): void {
   doc.getSelection()?.removeAllRanges();
 }

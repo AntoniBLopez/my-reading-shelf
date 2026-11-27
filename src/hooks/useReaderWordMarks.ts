@@ -6,7 +6,7 @@ import { copy } from '@/lib/marks/copy';
 import { isMarkWordKey, isReviewPanelKey } from '@/lib/marks/keys';
 import { isTypingTarget } from '@/lib/keyboard';
 import { FLASH_MS } from '@/lib/marks/constants';
-import { clearNativeSelection, readPageSelection } from '@/lib/marks/selection';
+import { clearNativeSelection, isFrontReader, readPageSelection } from '@/lib/marks/selection';
 import type { MarksGateway } from '@/lib/marks/store';
 import type { WordMark } from '@/lib/marks/types';
 
@@ -110,6 +110,7 @@ export function useReaderWordMarks({
   useEffect(() => {
     if (!shortcuts) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!isFrontReader(surfaceRef.current, document)) return;
       const field = event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="true"]');
       if (field) return;
       if (isReviewPanelKey(event)) {

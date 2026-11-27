@@ -6,6 +6,7 @@ import { useFullscreenKey } from '@/hooks/useFullscreenKey';
 import { useReaderArrowKeys } from '@/hooks/useReaderArrowKeys';
 import { useReaderWordMarks } from '@/hooks/useReaderWordMarks';
 import { MarkChrome } from '@/components/marks/MarkChrome';
+import { MarkToast } from '@/components/marks/MarkToast';
 import { MarkToolbar } from '@/components/marks/MarkToolbar';
 
 function Reader({ bookId, text }: { bookId: string; text: string }) {
@@ -28,6 +29,7 @@ function Reader({ bookId, text }: { bookId: string; text: string }) {
       <p data-testid="page">Página {page}</p>
       <p data-testid="full">{full ? 'completa' : 'ventana'}</p>
       <MarkToolbar controls={controls} />
+      <MarkToast toast={controls.toast} onUndo={controls.undo} onDismiss={controls.dismissToast} />
       <div ref={surface}>
         <div className="pdf-turn-leaf">
           <div className="textLayer">
@@ -67,14 +69,14 @@ describe('reader word marks', () => {
     select('bruma');
     press('KeyM', { ctrlKey: true, altKey: true });
 
-    expect(await screen.findByRole('status')).toHaveTextContent('"bruma" marcada · 2 veces en esta página');
+    expect(await screen.findByRole('status')).toHaveTextContent('"bruma" marcada · 2 en esta página');
     expect(window.getSelection()?.toString() ?? '').toBe('');
     expect(screen.getByTestId('page')).toHaveTextContent('Página 2');
     expect(screen.getByTestId('full')).toHaveTextContent('ventana');
 
     fireEvent.click(screen.getByRole('button', { name: 'Deshacer' }));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Panel de repaso' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Palabras marcadas (Ctrl+Alt+L)' }));
     expect(screen.getByText('Aún no hay palabras marcadas en este libro')).toBeInTheDocument();
   });
 
@@ -91,14 +93,19 @@ describe('reader word marks', () => {
     press('KeyM', { ctrlKey: true, altKey: true });
     press('KeyL', { ctrlKey: true, altKey: true });
 
-    expect(await screen.findByRole('dialog', { name: 'Panel de repaso' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Palabras marcadas' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Palabras marcadas' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'faro' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'bruma' })).toBeInTheDocument();
     expect(screen.getByTestId('full')).toHaveTextContent('ventana');
 
     fireEvent.click(screen.getByRole('button', { name: 'Repasar estas palabras' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Me la sé' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Aún no' }));
+    const study = screen.getByRole('progressbar');
+    expect(study).toHaveAttribute('aria-valuenow', '50');
+    fireEvent.keyDown(study.parentElement as HTMLElement, { key: ' ', code: 'Space' });
+    expect(screen.getByRole('button', { name: 'Ocultar contexto' })).toBeInTheDocument();
+    fireEvent.keyDown(study.parentElement as HTMLElement, { key: '2' });
+    fireEvent.keyDown(screen.getByRole('progressbar').parentElement as HTMLElement, { key: '1' });
     expect(screen.getByText('Eso es todo por ahora')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Volver a la lista' }));
     expect(screen.getByText('2 palabras · 1 aprendida')).toBeInTheDocument();
@@ -116,7 +123,7 @@ describe('reader word marks', () => {
         <Reader bookId="book-empty" text="Una página en calma." />
       </AuthProvider>,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Marcar o quitar la palabra seleccionada' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar palabra (Ctrl+Alt+M)' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Selecciona una palabra primero');
     expect(screen.getByTestId('page')).toHaveTextContent('Página 2');
     press('KeyF');

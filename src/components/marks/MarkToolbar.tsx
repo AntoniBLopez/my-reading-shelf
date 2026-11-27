@@ -1,10 +1,12 @@
 import { Highlighter, NotebookPen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ReaderWordControls } from '@/hooks/useReaderWordMarks';
-import { copy } from '@/lib/marks/copy';
-import { MARK_SHORTCUT, PANEL_SHORTCUT } from '@/lib/marks/keys';
+import { isApplePlatform, markTooltip, panelTooltip } from '@/lib/marks/keys';
 
 export function MarkToolbar({ controls }: { controls: ReaderWordControls }) {
+  const apple = isApplePlatform(typeof navigator === 'undefined' ? '' : navigator.userAgent);
+  const mark = markTooltip(apple);
+  const panel = panelTooltip(apple);
   return (
     <>
       <Button
@@ -12,8 +14,8 @@ export function MarkToolbar({ controls }: { controls: ReaderWordControls }) {
         size="icon"
         className="h-8 w-8 shrink-0"
         onClick={controls.toggleSelection}
-        aria-label={copy.mark}
-        title={`${copy.markShort} (${MARK_SHORTCUT})`}
+        aria-label={mark}
+        title={mark}
       >
         <Highlighter className="h-4 w-4" />
       </Button>
@@ -22,9 +24,9 @@ export function MarkToolbar({ controls }: { controls: ReaderWordControls }) {
         size="icon"
         className="h-8 w-8 shrink-0"
         onClick={controls.togglePanel}
-        aria-label={copy.panel}
+        aria-label={panel}
         aria-expanded={controls.panelOpen}
-        title={`${copy.panel} (${PANEL_SHORTCUT})`}
+        title={panel}
       >
         <NotebookPen className="h-4 w-4" />
       </Button>

@@ -3,7 +3,7 @@ import { MARK_SHORTCUT } from './keys';
 export const copy = {
   mark: 'Marcar o quitar la palabra seleccionada',
   markShort: 'Marcar palabra',
-  panel: 'Panel de repaso',
+  panel: 'Palabras marcadas',
   undo: 'Deshacer',
   learning: 'Aprendiendo',
   learned: 'Aprendidas',
@@ -17,6 +17,7 @@ export const copy = {
   deleteAction: 'Eliminar',
   showContext: 'Ver contexto',
   hideContext: 'Ocultar contexto',
+  studyHint: 'Espacio: contexto · 1 Aún no · 2 Me la sé',
   back: 'Volver a la lista',
   close: 'Cerrar panel',
   search: 'Busca tus palabras',
@@ -31,8 +32,7 @@ export const copy = {
 };
 
 export function toastMarked(word: string, count: number): string {
-  const noun = count === 1 ? 'vez' : 'veces';
-  return `"${word}" marcada · ${count} ${noun} en esta página`;
+  return `"${word}" marcada · ${count} en esta página`;
 }
 
 export function toastUnmarked(word: string): string {
@@ -55,8 +55,13 @@ export function studySummary(reviewed: number, known: number): string {
   return `Has repasado ${reviewed} ${reviewed === 1 ? 'palabra' : 'palabras'}. ${known} ${known === 1 ? 'pasa' : 'pasan'} a aprendidas.`;
 }
 
-export function emptyLead(): string {
-  return `Selecciona una palabra que no conozcas y pulsa ${MARK_SHORTCUT}. Seguirá resaltada en todo el libro.`;
+export function emptyLead(shortcut = MARK_SHORTCUT): string {
+  return `Selecciona una palabra y pulsa ${shortcut} para marcarla.`;
+}
+
+export function studyFill(index: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round(((index + 1) / total) * 100);
 }
 
 export function cardLabel(word: string, count: number, learned: boolean): string {
