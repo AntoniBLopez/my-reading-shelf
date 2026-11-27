@@ -38,6 +38,13 @@ import type { ReadablePdf } from '@/lib/rsvp/pageText';
 import { focusReaderFullscreenRoot, guardReaderFullscreenClick } from '@/lib/readerFullscreen';
 import { desktopFullscreenScale, readFullscreenScreen } from '@/lib/readerFullscreenScale';
 import { useReaderArrowKeys } from '@/hooks/useReaderArrowKeys';
+import { useReaderWordMarks } from '@/hooks/useReaderWordMarks';
+import { MarkChrome } from '@/components/marks/MarkChrome';
+import { MarkToast } from '@/components/marks/MarkToast';
+import { MarkToolbar } from '@/components/marks/MarkToolbar';
+import { useReaderPanelLayout } from '@/hooks/useReaderPanelLayout';
+import { chPixelWidth, layoutPageWidth, pagesRemainingLabel, readerShellClass } from '@/lib/readerShell';
+import { isTypingTarget } from '@/lib/keyboard';
 import { useReaderInteractionResume } from '@/hooks/useReaderInteractionResume';
 import { useReaderMarginTurn } from '@/hooks/useReaderMarginTurn';
 const MIN_SCALE = 0.1;
@@ -56,6 +63,11 @@ function defaultPageScale() {
 const PDF_LOAD_TIMEOUT_MS = 10000;
 /** Snap page width to this grid so layout jitter at default zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
+
+function fitReaderPageWidth(raw: number, el: HTMLElement, fullscreen: boolean): number {
+  const snapped = Math.max(PAGE_WIDTH_SNAP_PX, Math.round(raw / PAGE_WIDTH_SNAP_PX) * PAGE_WIDTH_SNAP_PX);
+  return layoutPageWidth(snapped, window.innerWidth, chPixelWidth(getComputedStyle(el).font), DESKTOP_DEFAULT_SCALE, fullscreen);
+}
 /** Ignore ResizeObserver updates smaller than this (e.g. scrollbar on theme change) so PDFContentBlock doesn't re-render and Document doesn't reset */
 const PAGE_WIDTH_MIN_DELTA_PX = 48;
 /** Tolerance to treat the two-finger zoom as back at the page zoom. */
@@ -143,6 +155,11 @@ function PDFViewerComponent({
   }, []);
   const pinchContentRef = useRef<HTMLDivElement>(null);
   const fullscreenRef = useRef<HTMLDivElement>(null);
+  const [readerFrame, setReaderFrame] = useState<HTMLDivElement | null>(null);
+  const assignReaderFrame = useCallback((node: HTMLDivElement | null) => {
+    fullscreenRef.current = node;
+    setReaderFrame(node);
+  }, []);
   const touchStartRef = useRef<{
     x: number;
     y: number;
@@ -173,6 +190,7 @@ function PDFViewerComponent({
   const pdfDocRef = useRef<ReadablePdf | null>(null);
   const [rsvpOpen, setRsvpOpen] = useState(false);
   const rsvpOpenRef = useRef(false);
+  const markPanelRef = useRef(false);
   rsvpOpenRef.current = rsvpOpen;
 
   const isAtBaseZoom = fingerZoom <= 1 + BASE_ZOOM_TOLERANCE;
@@ -382,25 +400,24 @@ function PDFViewerComponent({
       if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
       resizeRafRef.current = requestAnimationFrame(() => {
         resizeRafRef.current = null;
-        const snapped = Math.round(width / PAGE_WIDTH_SNAP_PX) * PAGE_WIDTH_SNAP_PX;
-        const clamped = Math.max(PAGE_WIDTH_SNAP_PX, snapped);
-        if (clamped !== lastPageWidthRef.current) {
-          lastPageWidthRef.current = clamped;
-          setPageWidth(clamped);
+        const next = fitReaderPageWidth(width, el, isFullscreen);
+        if (next !== lastPageWidthRef.current) {
+          lastPageWidthRef.current = next;
+          setPageWidth(next);
         }
       });
     });
     ro.observe(el);
     const rawInitial = el.getBoundingClientRect().width || 600;
     lastRawWidthRef.current = rawInitial;
-    const initial = Math.max(PAGE_WIDTH_SNAP_PX, Math.round(rawInitial / PAGE_WIDTH_SNAP_PX) * PAGE_WIDTH_SNAP_PX);
+    const initial = fitReaderPageWidth(rawInitial, el, isFullscreen);
     lastPageWidthRef.current = initial;
     setPageWidth(initial);
     return () => {
       if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
       ro.disconnect();
     };
-  }, [isOpen, pdfUrl]);
+  }, [isOpen, pdfUrl, isFullscreen]);
 
   // Load PDF URL on open (works for both Supabase signed URL and local blob URL).
   // Only show loading when we don't have a URL yet (initial load), not when effect re-runs e.g. after page change.
@@ -707,6 +724,17 @@ function PDFViewerComponent({
   }, [isFullscreen, toggleFullscreenHeader]);
   useReaderChromeKeys(isOpen && !rsvpOpen, toggleCenterHeader);
   useReaderArrowKeys(isOpen, () => rsvpOpenRef.current, requestTurn);
+  const wordMarks = useReaderWordMarks({
+    bookId: book.id,
+    bookTitle: book.title,
+    pageNumber,
+    surfaceRef: containerRef,
+    active: isOpen,
+    shortcuts: isOpen && !rsvpOpen,
+    onGoToPage: goToPage,
+    panelRef: markPanelRef,
+  });
+  const panelLayout = useReaderPanelLayout(readerFrame, isOpen);
   const releaseSelection = useCallback(() => {
     isTextSelectedRef.current = false;
     containerRef.current?.classList.remove('pdf-viewer-selecting');
@@ -728,8 +756,7 @@ function PDFViewerComponent({
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (rsvpOpenRef.current) return;
-      const target = e.target as HTMLElement;
-      if (target.closest('input') || target.closest('textarea') || target.isContentEditable) return;
+      if (isTypingTarget(e.target)) return;
       if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
         e.preventDefault();
         setScaleClamped(s => s + 0.1);
@@ -865,28 +892,29 @@ function PDFViewerComponent({
       <DialogContent
         className={cn(
           'flex flex-col p-0',
-          isFullscreen
-            ? 'fixed inset-0 w-[100vw] h-[100dvh] max-w-none rounded-none z-[100] border-0 translate-x-0 translate-y-0 left-0 top-0 right-0 bottom-0'
-            : 'max-w-4xl h-[90vh]'
+          readerShellClass(isFullscreen)
         )}
         hideCloseButton
         onEscapeKeyDown={(event) => {
-          if (rsvpOpenRef.current) event.preventDefault();
+          if (rsvpOpenRef.current || markPanelRef.current) {
+            event.preventDefault();
+            if (markPanelRef.current) wordMarks.closePanel();
+          }
         }}
         onPointerDownOutside={(event) => guardReaderFullscreenClick(fullscreenRef.current, event)}
         onInteractOutside={(event) => guardReaderFullscreenClick(fullscreenRef.current, event)}
       >
         {!isFullscreen && (
         <DialogHeader className="px-4 py-3 border-b bg-muted/50" data-reader-chrome="">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="font-serif flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-primary" />
-              {book.title}
+          <div className="flex items-center gap-2">
+            <DialogTitle className="flex min-w-0 flex-1 items-center gap-2 font-serif">
+              <BookOpen className="h-5 w-5 shrink-0 text-primary" />
+              <span className="truncate">{book.title}</span>
             </DialogTitle>
             {pdfLoadedOffline && (
-              <Badge variant="outline" className="gap-1 border-primary/30 text-primary">
-                <WifiOff className="w-3 h-3" />
-                Modo offline
+              <Badge variant="outline" aria-label="Modo offline" className="shrink-0 gap-1 border-primary/30 text-primary">
+                <WifiOff className="h-3 w-3" />
+                <span className="max-[480px]:sr-only">Modo offline</span>
               </Badge>
             )}
             <DialogDescription className="sr-only">
@@ -906,7 +934,7 @@ function PDFViewerComponent({
         )}
 
         {/* Área de pantalla completa: toolbar + contenido (zoom y páginas disponibles en fullscreen) */}
-        <div ref={fullscreenRef} tabIndex={-1} className="flex-1 flex flex-col min-h-0 min-w-0 relative outline-none">
+        <div ref={assignReaderFrame} tabIndex={-1} className="flex-1 flex flex-col min-h-0 min-w-0 relative outline-none">
           {isFullscreen && showFullscreenHint && (
             <div className="absolute top-[40px] left-0 right-0 z-10 flex justify-center pt-3 pb-2 px-4 pointer-events-none">
               <p className="text-xs sm:text-sm text-center text-foreground/90 bg-background/95 backdrop-blur rounded-lg px-3 py-2 shadow-md border border-border/50">
@@ -962,6 +990,7 @@ function PDFViewerComponent({
 
             {/* Fullscreen, theme, zoom — wraps on very narrow screens */}
             <div className="flex flex-wrap items-center gap-1 sm:gap-2 min-w-0 shrink-0 justify-end">
+              <MarkToolbar controls={wordMarks} />
               <RsvpLaunchButton
                 disabled={!pdfUrl || loading || !!error}
                 onClick={() => setRsvpOpen(true)}
@@ -1029,6 +1058,8 @@ function PDFViewerComponent({
           )}
 
           {/* PDF Content: scroll container for pan when zoomed; swipe page only at toolbar default zoom */}
+          <div className="flex min-h-0 min-w-0 flex-1">
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div
             ref={assignScroll}
             data-reader-viewport=""
@@ -1099,6 +1130,10 @@ function PDFViewerComponent({
               )}
             </div>
           </div>
+          <MarkToast toast={wordMarks.toast} onUndo={wordMarks.undo} onDismiss={wordMarks.dismissToast} />
+          </div>
+          <MarkChrome controls={wordMarks} layout={panelLayout} />
+          </div>
         </div>
 
         {/* Footer with page info — hidden in fullscreen to maximize PDF area */}
@@ -1107,7 +1142,7 @@ function PDFViewerComponent({
           {pageNumber === numPages && numPages > 0 ? (
             <span className="text-success font-medium">🎉 ¡Has llegado al final!</span>
           ) : (
-            <span>Te quedan {numPages - pageNumber} páginas</span>
+            <span>{pagesRemainingLabel(numPages - pageNumber)}</span>
           )}
         </div>
         )}

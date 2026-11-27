@@ -172,7 +172,8 @@ describe('book links in the reader', () => {
       '_blank',
       'noopener,noreferrer',
     );
-    const opened = vi.mocked(window.open).mock.results.at(-1)?.value as { opener: unknown } | null;
+    const results = vi.mocked(window.open).mock.results;
+    const opened = results[results.length - 1]?.value as { opener: unknown } | null;
     expect(opened?.opener).toBeNull();
     expect(window.location.href).toBe(here);
     expect(document.querySelector('.pdf-turn-leaf')?.textContent).toContain('2');

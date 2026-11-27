@@ -27,6 +27,7 @@ import {
   type PendingStructureOperationDraft,
   LOCAL_USER_ID,
 } from '@/lib/localStorage';
+import { dropBookMarks } from '@/lib/marks/store';
 
 export function useLibrary() {
   const { user } = useAuth();
@@ -496,7 +497,11 @@ export function useLibrary() {
     if (!pendingFolderDeleteRef.current) return;
     const { booksInFolder: pendingBooks } = pendingFolderDeleteRef.current;
     pendingFolderDeleteRef.current = null;
-    pendingBooks.forEach(b => deletePdfBlob(b.id));
+    const ownerId = user?.id ?? LOCAL_USER_ID;
+    pendingBooks.forEach((b) => {
+      void deletePdfBlob(b.id);
+      dropBookMarks(ownerId, b.id);
+    });
   };
 
   const deleteFolder = async (id: string) => {
@@ -885,6 +890,7 @@ export function useLibrary() {
       const { id: pendingId, book: pendingBook, isLocal: pendingLocal } = pending;
       pendingDeleteRef.current = null;
 
+      dropBookMarks(user?.id ?? LOCAL_USER_ID, pendingId);
       if (pendingLocal) {
         await deletePdfBlob(pendingId);
         return;

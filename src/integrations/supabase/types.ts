@@ -144,6 +144,35 @@ export type Database = {
         }
         Relationships: []
       }
+      book_word_marks: {
+        Row: {
+          book_id: string
+          user_id: string
+          marks: Json
+          updated_at: string
+        }
+        Insert: {
+          book_id: string
+          user_id: string
+          marks?: Json
+          updated_at?: string
+        }
+        Update: {
+          book_id?: string
+          user_id?: string
+          marks?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "book_word_marks_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: true
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

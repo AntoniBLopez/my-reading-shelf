@@ -1,8 +1,8 @@
-/** True when the event target is a field the reader must not steal keys from. */
+/** True when the reader must leave the key to a field or to the word-review UI. */
 export function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   if (target instanceof HTMLElement && target.isContentEditable) return true;
-  return target.closest('input, textarea, [contenteditable="true"]') != null;
+  return target.closest('input, textarea, [contenteditable="true"], [data-mark-ui]') != null;
 }
 
 /** Space and Enter are the play/pause and header keys. */
