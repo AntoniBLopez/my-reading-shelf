@@ -24,7 +24,7 @@ export const copy = {
   selectFirst: 'Selecciona una palabra primero',
   tooLong: 'Elige una palabra o frase corta (máx. 4 palabras)',
   emptyTitle: 'Aún no hay palabras marcadas en este libro',
-  emptyPageTitle: 'Ninguna palabra marcada en esta página',
+  emptyPageTitle: 'No hay palabras marcadas en esta página',
   emptyLearned: 'Ya te sabes todas las palabras',
   emptySearch: (query: string) => `Ninguna palabra coincide con "${query}"`,
   studyDone: 'Eso es todo por ahora',

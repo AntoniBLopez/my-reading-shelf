@@ -43,7 +43,7 @@ import { MarkChrome } from '@/components/marks/MarkChrome';
 import { MarkToast } from '@/components/marks/MarkToast';
 import { MarkToolbar } from '@/components/marks/MarkToolbar';
 import { useReaderPanelLayout } from '@/hooks/useReaderPanelLayout';
-import { pagesRemainingLabel, readerShellClass } from '@/lib/readerShell';
+import { chPixelWidth, layoutPageWidth, pagesRemainingLabel, readerShellClass } from '@/lib/readerShell';
 import { isTypingTarget } from '@/lib/keyboard';
 import { useReaderInteractionResume } from '@/hooks/useReaderInteractionResume';
 import { useReaderMarginTurn } from '@/hooks/useReaderMarginTurn';
@@ -63,6 +63,11 @@ function defaultPageScale() {
 const PDF_LOAD_TIMEOUT_MS = 10000;
 /** Snap page width to this grid so layout jitter at default zoom doesn't trigger re-renders */
 const PAGE_WIDTH_SNAP_PX = 64;
+
+function fitReaderPageWidth(raw: number, el: HTMLElement, fullscreen: boolean): number {
+  const snapped = Math.max(PAGE_WIDTH_SNAP_PX, Math.round(raw / PAGE_WIDTH_SNAP_PX) * PAGE_WIDTH_SNAP_PX);
+  return layoutPageWidth(snapped, window.innerWidth, chPixelWidth(getComputedStyle(el).font), DESKTOP_DEFAULT_SCALE, fullscreen);
+}
 /** Ignore ResizeObserver updates smaller than this (e.g. scrollbar on theme change) so PDFContentBlock doesn't re-render and Document doesn't reset */
 const PAGE_WIDTH_MIN_DELTA_PX = 48;
 /** Tolerance to treat the two-finger zoom as back at the page zoom. */
@@ -395,25 +400,24 @@ function PDFViewerComponent({
       if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
       resizeRafRef.current = requestAnimationFrame(() => {
         resizeRafRef.current = null;
-        const snapped = Math.round(width / PAGE_WIDTH_SNAP_PX) * PAGE_WIDTH_SNAP_PX;
-        const clamped = Math.max(PAGE_WIDTH_SNAP_PX, snapped);
-        if (clamped !== lastPageWidthRef.current) {
-          lastPageWidthRef.current = clamped;
-          setPageWidth(clamped);
+        const next = fitReaderPageWidth(width, el, isFullscreen);
+        if (next !== lastPageWidthRef.current) {
+          lastPageWidthRef.current = next;
+          setPageWidth(next);
         }
       });
     });
     ro.observe(el);
     const rawInitial = el.getBoundingClientRect().width || 600;
     lastRawWidthRef.current = rawInitial;
-    const initial = Math.max(PAGE_WIDTH_SNAP_PX, Math.round(rawInitial / PAGE_WIDTH_SNAP_PX) * PAGE_WIDTH_SNAP_PX);
+    const initial = fitReaderPageWidth(rawInitial, el, isFullscreen);
     lastPageWidthRef.current = initial;
     setPageWidth(initial);
     return () => {
       if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
       ro.disconnect();
     };
-  }, [isOpen, pdfUrl]);
+  }, [isOpen, pdfUrl, isFullscreen]);
 
   // Load PDF URL on open (works for both Supabase signed URL and local blob URL).
   // Only show loading when we don't have a URL yet (initial load), not when effect re-runs e.g. after page change.

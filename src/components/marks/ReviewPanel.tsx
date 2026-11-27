@@ -4,7 +4,7 @@ import { StudyView } from '@/components/marks/StudyView';
 import { WordCard } from '@/components/marks/WordCard';
 import { copy, emptyLead, summaryLine } from '@/lib/marks/copy';
 import { isApplePlatform, shortcutGlyph } from '@/lib/marks/keys';
-import { panelFrameClass, type PanelLayout } from '@/lib/marks/panelLayout';
+import { panelFrameClass, sheetSwipeCloses, type PanelLayout } from '@/lib/marks/panelLayout';
 import type { WordMark } from '@/lib/marks/types';
 
 type Tab = 'page' | 'book';
@@ -90,16 +90,20 @@ export function ReviewPanel({
         <StudyView queue={studyQueue} onKnow={onLearn} onBack={() => setStudying(false)} />
       ) : (
         <>
-          <header className="flex items-start gap-3 bg-[var(--mark-raised)] px-5 py-5 pr-12">
-            <Highlighter className="mt-0.5 h-5 w-5 shrink-0 text-[var(--mark-action)]" aria-hidden />
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold leading-snug">{copy.panel}</h2>
-              <p className="mt-1 text-sm font-medium text-[var(--mark-muted)]">{summaryLine(marks.length, learnedTotal)}</p>
-            </div>
-            <button type="button" aria-label={copy.close} className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-lg" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </button>
-          </header>
+          <SheetTop layout={layout} onClose={onClose}>
+            <header className="relative flex items-start gap-3 bg-[var(--mark-raised)] px-5 py-5 pr-12">
+              <Highlighter className="mt-0.5 h-5 w-5 shrink-0 text-[var(--mark-ink)]" aria-hidden />
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold leading-snug">{copy.panel}</h2>
+                {marks.length > 0 && (
+                  <p className="mt-1 text-sm font-medium text-[var(--mark-muted)]">{summaryLine(marks.length, learnedTotal)}</p>
+                )}
+              </div>
+              <button type="button" aria-label={copy.close} className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-lg" onClick={onClose}>
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+          </SheetTop>
           <div role="tablist" className="mx-4 mt-3 grid grid-cols-2 gap-1 rounded-[14px] bg-[var(--mark-raised)] p-1">
             <TabButton id="page" selected={tab === 'page'} onClick={() => setTab('page')}>{copy.thisPage}</TabButton>
             <TabButton id="book" selected={tab === 'book'} onClick={() => setTab('book')}>{copy.wholeBook}</TabButton>
@@ -111,7 +115,7 @@ export function ReviewPanel({
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={copy.search}
                 aria-label={copy.search}
-                className="mt-3 h-11 w-full rounded-xl border-0 bg-[var(--mark-card)] px-3.5 text-[15px] text-[var(--mark-text)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--mark-action)]"
+                className="mt-3 h-11 w-full rounded-xl border-0 bg-[var(--mark-card)] px-3.5 text-[15px] text-[var(--mark-text)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--mark-ink)]"
               />
             )}
             <ListBody
@@ -145,16 +149,37 @@ function onThisPage(mark: WordMark, pageNumber: number, counts: Record<string, n
   return mark.pageNumber === pageNumber;
 }
 
-function TabButton({ id, selected, onClick, children }: { id: string; selected: boolean; onClick: () => void; children: string }) {
+function SheetTop({ layout, onClose, children }: { layout: PanelLayout; onClose: () => void; children: ReactNode }) {
+  const origin = useRef<number | null>(null);
+  if (layout !== 'sheet') return <>{children}</>;
+  const finish = (clientY: number) => {
+    if (origin.current == null) return;
+    const delta = clientY - origin.current;
+    origin.current = null;
+    if (sheetSwipeCloses(delta)) onClose();
+  };
   return (
-    <button
-      type="button"
-      role="tab"
-      id={id}
-      aria-selected={selected}
-      className={`h-10 rounded-[10px] font-semibold ${selected ? 'bg-[var(--mark-card)] text-[var(--mark-text)] shadow-sm' : 'text-[var(--mark-muted)]'}`}
-      onClick={onClick}
+    <div
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        origin.current = event.clientY;
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+      }}
+      onPointerUp={(event) => finish(event.clientY)}
+      onPointerCancel={() => { origin.current = null; }}
     >
+      <div aria-hidden className="mx-auto mt-2 h-1 w-9 rounded-[2px] bg-[var(--mark-line)]" data-sheet-handle="" />
+      {children}
+    </div>
+  );
+}
+
+function TabButton({ id, selected, onClick, children }: { id: string; selected: boolean; onClick: () => void; children: string }) {
+  const tone = selected
+    ? 'border border-[var(--mark-tab-border)] bg-[var(--mark-tab-bg)] font-semibold text-[var(--mark-tab-text)] shadow-sm dark:font-bold dark:shadow-none'
+    : 'border border-transparent font-semibold text-[var(--mark-tab-idle)]';
+  return (
+    <button type="button" role="tab" id={id} aria-selected={selected} className={`h-10 rounded-[10px] ${tone}`} onClick={onClick}>
       {children}
     </button>
   );
@@ -180,8 +205,10 @@ function ListBody({
     <Card key={mark.id} mark={mark} counts={counts} onGoTo={onGoTo} onLearn={onLearn} onDelete={onDelete} />
   ));
   if (tab === 'book' && query.trim() && learning.length + learned.length === 0) return <Empty title={copy.emptySearch(query.trim())} />;
-  if (marks.length === 0) return <Empty title={copy.emptyTitle} body={emptyLead(shortcut)} kbd={shortcut} />;
-  if (learning.length === 0 && learned.length === 0) return <Empty title={copy.emptyPageTitle} />;
+  if (learning.length === 0 && learned.length === 0) {
+    const title = tab === 'page' ? copy.emptyPageTitle : copy.emptyTitle;
+    return <Empty title={title} body={marks.length === 0 ? emptyLead(shortcut) : undefined} kbd={marks.length === 0 ? shortcut : undefined} />;
+  }
   if (learning.length === 0 && learned.length > 0) {
     return (
       <>
@@ -236,7 +263,7 @@ function Card(props: {
 function Empty({ title, body, kbd }: { title: string; body?: string; kbd?: string }) {
   return (
     <div className="px-3 py-8 text-center">
-      <Highlighter className="mx-auto mb-4 h-10 w-10 text-[var(--mark-action)]" aria-hidden />
+      <Highlighter className="mx-auto mb-4 h-10 w-10 text-[var(--mark-ink)]" aria-hidden />
       <h3 className="text-xl font-bold">{title}</h3>
       {body && (
         <p className="mx-auto mt-2 max-w-[36ch] text-[15px] font-medium leading-relaxed text-[var(--mark-muted)]">

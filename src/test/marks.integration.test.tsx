@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useRef, useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '@/hooks/useAuth';
 import { useFullscreenKey } from '@/hooks/useFullscreenKey';
 import { useReaderArrowKeys } from '@/hooks/useReaderArrowKeys';
@@ -8,6 +8,7 @@ import { useReaderWordMarks } from '@/hooks/useReaderWordMarks';
 import { MarkChrome } from '@/components/marks/MarkChrome';
 import { MarkToast } from '@/components/marks/MarkToast';
 import { MarkToolbar } from '@/components/marks/MarkToolbar';
+import { ReviewPanel } from '@/components/marks/ReviewPanel';
 
 function Reader({ bookId, text }: { bookId: string; text: string }) {
   const surface = useRef<HTMLDivElement>(null);
@@ -77,6 +78,10 @@ describe('reader word marks', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Deshacer' }));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Palabras marcadas (Ctrl+Alt+L)' }));
+    expect(screen.getByText('No hay palabras marcadas en esta página')).toBeInTheDocument();
+    expect(screen.queryByText('0 palabras · 0 aprendidas')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Esta página' }).className).toContain('dark:font-bold');
+    fireEvent.click(screen.getByRole('tab', { name: 'Todo el libro' }));
     expect(screen.getByText('Aún no hay palabras marcadas en este libro')).toBeInTheDocument();
   });
 
@@ -100,6 +105,9 @@ describe('reader word marks', () => {
     expect(screen.getByTestId('full')).toHaveTextContent('ventana');
 
     fireEvent.click(screen.getByRole('button', { name: 'Repasar estas palabras' }));
+    expect(screen.getByRole('button', { name: 'Ver contexto' }).className).toContain('--mark-ink');
+    expect(screen.getByRole('button', { name: 'Me la sé' }).className).toContain('--mark-success');
+    expect(studyBar().className).toContain('--mark-ink');
     const study = screen.getByRole('progressbar');
     expect(study).toHaveAttribute('aria-valuenow', '50');
     fireEvent.keyDown(study.parentElement as HTMLElement, { key: ' ', code: 'Space' });
@@ -129,4 +137,30 @@ describe('reader word marks', () => {
     press('KeyF');
     expect(screen.getByTestId('full')).toHaveTextContent('completa');
   });
+
+  it('GIVEN the mobile sheet WHEN the reader swipes the handle down THEN the panel closes', () => {
+    const onClose = vi.fn();
+    render(
+      <ReviewPanel
+        layout="sheet"
+        marks={[]}
+        pageNumber={1}
+        counts={{}}
+        onClose={onClose}
+        onGoTo={() => undefined}
+        onDelete={() => undefined}
+        onLearn={() => undefined}
+      />,
+    );
+    const handle = document.querySelector('[data-sheet-handle]');
+    const zone = handle?.parentElement as HTMLElement;
+    fireEvent.pointerDown(zone, { button: 0, clientY: 40, pointerId: 1 });
+    fireEvent.pointerUp(zone, { clientY: 140, pointerId: 1 });
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByText('0 palabras · 0 aprendidas')).not.toBeInTheDocument();
+  });
 });
+
+function studyBar(): HTMLElement {
+  return screen.getByRole('progressbar').firstElementChild as HTMLElement;
+}

@@ -66,7 +66,8 @@
     --success: 150 40% 40%;
     --success-foreground: 40 30% 96%;
 
-    /* Word marks. Burgundy stays the light primary so the action stays white-on-wine in both themes. */
+    /* Word marks. Burgundy stays the action so the button stays white-on-wine in both themes. */
+    --primary-text-dark: #E8A3AD;
     --mark-surface: #FBF7F1;
     --mark-raised: #F4EADB;
     --mark-card: #ffffff;
@@ -75,6 +76,13 @@
     --mark-line: #E8DFD2;
     --mark-action: hsl(350 45% 30%);
     --mark-action-hover: hsl(350 45% 24%);
+    --mark-ink: hsl(350 45% 30%);
+    --mark-success: #2E7D57;
+    --mark-success-hover: #276B4A;
+    --mark-tab-bg: #ffffff;
+    --mark-tab-text: #1c1917;
+    --mark-tab-border: transparent;
+    --mark-tab-idle: #5c534c;
     --mark-toast: hsl(25 20% 10%);
     --mark-toast-text: hsl(40 20% 92%);
     --mark-undo: hsl(42 70% 55%);
@@ -133,6 +141,11 @@
     --mark-text: #F3EDE4;
     --mark-muted: #B8AEA2;
     --mark-line: rgba(255, 255, 255, 0.08);
+    --mark-ink: var(--primary-text-dark);
+    --mark-tab-bg: #3D3530;
+    --mark-tab-text: #F3EDE4;
+    --mark-tab-border: rgba(255, 255, 255, 0.12);
+    --mark-tab-idle: #B8AEA2;
   }
 }
 

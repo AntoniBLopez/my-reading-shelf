@@ -4,7 +4,7 @@ import { cardLabel, copy } from '@/lib/marks/copy';
 import { paletteColor } from '@/lib/marks/palette';
 import type { WordMark } from '@/lib/marks/types';
 
-const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mark-action)]';
+const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mark-ink)]';
 
 export function WordCard({
   mark,
